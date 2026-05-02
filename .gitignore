@@ -8,3 +8,5 @@ web/dist/
 config.local.yaml
 assets/dist/*
 !assets/dist/.gitkeep
+.env
+config.yml
