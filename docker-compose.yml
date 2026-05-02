@@ -1,0 +1,14 @@
+services:
+  defuse:
+    image: ghcr.io/codevski/defuse:latest
+    container_name: defuse
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "27500:27500/udp"
+    environment:
+      PANEL_PASSWORD: ${PANEL_PASSWORD}
+      RCON_PASSWORD: ${RCON_PASSWORD}
+      CONFIG_PATH: /etc/defuse/config.yaml
+    volumes:
+      - ./config.yaml:/etc/defuse/config.yaml:ro
