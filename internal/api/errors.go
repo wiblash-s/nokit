@@ -1,5 +1,3 @@
-// Package api provides HTTP handler primitives for the defuse panel.
-//
 // Handlers in this package return errors instead of writing them directly.
 // Errors of type *HTTPError carry an explicit status code; any other error
 // is treated as a 500 and logged with full context. This keeps handlers

@@ -4,6 +4,7 @@
 package rcon
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -17,63 +18,121 @@ type Client interface {
 	Close() error
 }
 
+var ErrNotConnected = errors.New("rcon: not connected")
+
+type connection struct {
+	id       string
+	host     string
+	password string
+
+	mu     sync.Mutex
+	client Client
+}
+
 type Manager struct {
 	logger *slog.Logger
 
-	mu      sync.RWMutex
-	clients map[string]Client
+	mu          sync.RWMutex
+	connections map[string]*connection
 }
 
 func New(logger *slog.Logger) *Manager {
 	return &Manager{
-		logger:  logger,
-		clients: make(map[string]Client),
+		logger:      logger,
+		connections: make(map[string]*connection),
 	}
 }
 
-func (m *Manager) Connect(serverID, host, password string) error {
-	conn, err := rcon.Dial(host, password,
+func (m *Manager) Register(serverID, host, password string) {
+	conn := &connection{
+		id:       serverID,
+		host:     host,
+		password: password,
+	}
+
+	m.mu.Lock()
+	m.connections[serverID] = conn
+	m.mu.Unlock()
+
+	if err := m.dial(conn); err != nil {
+		m.logger.Warn("rcon initial connect failed",
+			"server", serverID,
+			"host", host,
+			"error", err,
+		)
+	}
+}
+
+func (m *Manager) dial(conn *connection) error {
+	c, err := rcon.Dial(conn.host, conn.password,
 		rcon.SetDialTimeout(5*time.Second),
 		rcon.SetDeadline(10*time.Second),
 	)
 	if err != nil {
-		return fmt.Errorf("rcon dial %s: %w", host, err)
+		return fmt.Errorf("rcon dial %s: %w", conn.host, err)
 	}
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if existing, ok := m.clients[serverID]; ok {
-		_ = existing.Close()
+	conn.mu.Lock()
+	if conn.client != nil {
+		_ = conn.client.Close()
 	}
-	m.clients[serverID] = conn
-	m.logger.Info("rcon connected", "server", serverID, "host", host)
+	conn.client = c
+	conn.mu.Unlock()
+
+	m.logger.Info("rcon connected", "server", conn.id, "host", conn.host)
 	return nil
 }
 
-func (m *Manager) Get(serverID string) (Client, bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	c, ok := m.clients[serverID]
-	return c, ok
-}
-
 func (m *Manager) Execute(serverID, command string) (string, error) {
-	c, ok := m.Get(serverID)
+	m.mu.RLock()
+	conn, ok := m.connections[serverID]
+	m.mu.RUnlock()
 	if !ok {
-		return "", fmt.Errorf("no rcon client for server %q", serverID)
+		return "", fmt.Errorf("rcon: unknown server %q", serverID)
 	}
-	return c.Execute(command)
+
+	conn.mu.Lock()
+	client := conn.client
+	conn.mu.Unlock()
+
+	if client != nil {
+		out, err := client.Execute(command)
+		if err == nil {
+			return out, nil
+		}
+		m.logger.Warn("rcon execute failed, retrying",
+			"server", serverID,
+			"error", err,
+		)
+		conn.mu.Lock()
+		_ = conn.client.Close()
+		conn.client = nil
+		conn.mu.Unlock()
+	}
+
+	if err := m.dial(conn); err != nil {
+		return "", fmt.Errorf("%w: %v", ErrNotConnected, err)
+	}
+
+	conn.mu.Lock()
+	client = conn.client
+	conn.mu.Unlock()
+
+	return client.Execute(command)
 }
 
 func (m *Manager) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for id, c := range m.clients {
-		if err := c.Close(); err != nil {
-			m.logger.Warn("rcon close", "server", id, "error", err)
+	for id, conn := range m.connections {
+		conn.mu.Lock()
+		if conn.client != nil {
+			if err := conn.client.Close(); err != nil {
+				m.logger.Warn("rcon close", "server", id, "error", err)
+			}
+			conn.client = nil
 		}
-		delete(m.clients, id)
+		conn.mu.Unlock()
 	}
 	return nil
 }
