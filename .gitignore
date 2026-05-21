@@ -12,3 +12,4 @@ assets/dist/*
 .env
 config.yml
 *.fish
+*.db
