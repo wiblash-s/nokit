@@ -1,6 +1,6 @@
 services:
   defuse:
-    image: ghcr.io/codevski/defuse:latest
+    image: ghcr.io/wiblash-s/nokit:latest
     container_name: defuse
     restart: unless-stopped
     ports:
@@ -10,5 +10,10 @@ services:
       PANEL_PASSWORD: ${PANEL_PASSWORD}
       RCON_PASSWORD: ${RCON_PASSWORD}
       CONFIG_PATH: /etc/defuse/config.yaml
+      DB_PATH: /data/nokit.db
     volumes:
       - ./config.yaml:/etc/defuse/config.yaml:ro
+      - nokit_data:/data
+
+volumes:
+  nokit_data:
