@@ -1,0 +1,76 @@
+{
+  "standard": [
+    {
+      "id": "de_mirage",
+      "name": "Mirage",
+      "mode": "comp",
+      "thumbnail": "/maps/de_mirage.jpg"
+    },
+    {
+      "id": "de_inferno",
+      "name": "Inferno",
+      "mode": "comp",
+      "thumbnail": "/maps/de_inferno.jpg"
+    },
+    {
+      "id": "de_dust2",
+      "name": "Dust II",
+      "mode": "comp",
+      "thumbnail": "/maps/de_dust2.jpg"
+    },
+    {
+      "id": "de_nuke",
+      "name": "Nuke",
+      "mode": "comp",
+      "thumbnail": "/maps/de_nuke.jpg"
+    },
+    {
+      "id": "de_overpass",
+      "name": "Overpass",
+      "mode": "comp",
+      "thumbnail": "/maps/de_overpass.jpg"
+    },
+    {
+      "id": "de_anubis",
+      "name": "Anubis",
+      "mode": "comp",
+      "thumbnail": "/maps/de_anubis.jpg"
+    },
+    {
+      "id": "de_vertigo",
+      "name": "Vertigo",
+      "mode": "comp",
+      "thumbnail": "/maps/de_vertigo.jpg"
+    },
+    {
+      "id": "de_ancient",
+      "name": "Ancient",
+      "mode": "comp",
+      "thumbnail": "/maps/de_ancient.jpg"
+    },
+    {
+      "id": "de_train",
+      "name": "Train",
+      "mode": "comp",
+      "thumbnail": "/maps/de_train.jpg"
+    },
+    {
+      "id": "cs_office",
+      "name": "Office",
+      "mode": "hostage",
+      "thumbnail": "/maps/cs_office.jpg"
+    },
+    {
+      "id": "cs_italy",
+      "name": "Italy",
+      "mode": "hostage",
+      "thumbnail": "/maps/cs_italy.jpg"
+    },
+    {
+      "id": "aim_botz",
+      "name": "aim_botz",
+      "mode": "practice",
+      "thumbnail": "/maps/aim_botz.jpg"
+    }
+  ]
+}

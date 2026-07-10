@@ -4,6 +4,7 @@ import { useServers } from "@/hooks/useServers"
 import { LoginPage } from "@/pages/login-page"
 import { ServerPage } from "@/pages/server-page"
 import { DashboardPage } from "@/pages/dashboard-page"
+import { MapsPage } from "@/pages/maps-page"
 import { Console } from "@/components/console"
 import { Header } from "./components/header"
 import { Layout } from "./components/layout"
@@ -69,6 +70,11 @@ function ConsoleRoute() {
   return <Console serverId={id!} />
 }
 
+function MapsRoute() {
+  const { id } = useParams<{ id: string }>()
+  return <MapsPage serverId={id!} />
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -101,7 +107,7 @@ export default function App() {
           <Route path="console" element={<ConsoleRoute />} />
           <Route path="logs" element={<PlaceholderPage title="Live Logs" />} />
           <Route path="players" element={<PlaceholderPage title="Players" />} />
-          <Route path="maps" element={<PlaceholderPage title="Maps" />} />
+          <Route path="maps" element={<MapsRoute />} />
           <Route path="presets" element={<PlaceholderPage title="CVAR Presets" />} />
           <Route path="config" element={<PlaceholderPage title="Config Editor" />} />
           <Route path="plugins" element={<PlaceholderPage title="Plugins" />} />
