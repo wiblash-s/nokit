@@ -14,7 +14,7 @@ Only a subset of the panel is implemented today; the rest exists as a demo/plann
 |---------|--------|
 | Login / Auth | ✅ Implemented |
 | Multi-server switcher | ✅ Implemented |
-| RCON Console | ✅ Implemented | Full terminal UI: timestamps, color-coded output, ↑↓ history, Ctrl+L clear, Tab autocomplete (5000+ CS2 CVARs/commands), RCON macros sidebar with localStorage persistence, clickable history panel, live/paused scroll toggle, Copy session & Export |
+| RCON Console | ✅ Implemented | Full terminal UI: timestamps, color-coded output, ↑↓ history, Ctrl+L clear, inline suggestion list autocomplete (top 8 ranked hits, prefix-highlighted, appears after first character; navigable with ↑↓, Tab/Enter to fill, Escape to dismiss, mouse click) for 5000+ CS2 CVARs/commands, RCON macros sidebar with localStorage persistence, clickable history panel, live/paused scroll toggle, Copy session & Export |
 | Dashboard | ✅ Implemented |
 | Live Logs | ❌ Not built (demo only / planned) |
 | Players | ❌ Not built (demo only / planned) |
@@ -29,7 +29,7 @@ See **[`featureDetail.md`](./featureDetail.md)** for the complete demo reference
 
 ## Features
 
-- **RCON console** with autocomplete for 5000+ commands and CVARs
+- **RCON console** with inline suggestion list autocomplete for 5000+ commands and CVARs (auto-appears after the first character, prefix-highlighted, keyboard + mouse navigable)
 - **Live logs** streamed over Server-Sent Events
 - **Player management** — search, kick, SteamID resolution
 - **Map control** — standard maps, workshop IDs, browser-stored favorites
