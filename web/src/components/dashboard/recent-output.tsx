@@ -1,7 +1,8 @@
+import { Link, useParams } from "react-router-dom"
+
 type Props = {
   rawStatus: string
   lastUpdated: number | null
-  onOpenConsole: () => void
 }
 
 function ago(ts: number | null): string {
@@ -11,7 +12,8 @@ function ago(ts: number | null): string {
   return `${Math.round(secs / 60)}m ago`
 }
 
-export function RecentOutput({ rawStatus, lastUpdated, onOpenConsole }: Props) {
+export function RecentOutput({ rawStatus, lastUpdated }: Props) {
+  const { id } = useParams<{ id: string }>()
   const lines = rawStatus
     .split(/\r?\n/)
     .map((l) => l.trimEnd())
@@ -22,12 +24,12 @@ export function RecentOutput({ rawStatus, lastUpdated, onOpenConsole }: Props) {
     <div className="rounded-lg border border-border bg-card p-4">
       <div className="mb-2 flex items-center justify-between">
         <h2 className="text-sm font-semibold">Recent output</h2>
-        <button
-          onClick={onOpenConsole}
+        <Link
+          to={`/servers/${id}/console`}
           className="text-xs text-muted-foreground transition-colors hover:text-foreground"
         >
           open console →
-        </button>
+        </Link>
       </div>
 
       <div className="max-h-56 overflow-y-auto rounded-md bg-muted/50 p-3 font-mono text-xs leading-relaxed">
