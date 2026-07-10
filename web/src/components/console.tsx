@@ -11,6 +11,7 @@ import { Loader2, Play, Plus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
+import cs2CommandsData from "@/data/cs2-commands.json"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -33,48 +34,9 @@ type Macro = {
 // Constants
 // ---------------------------------------------------------------------------
 
-// Common CS2 commands / CVARs used for tab-autocomplete.
-const COMMANDS: string[] = [
-  "status",
-  "stats",
-  "say",
-  "kick",
-  "ban",
-  "mp_restartgame",
-  "mp_warmup_end",
-  "mp_warmup_start",
-  "mp_warmuptime",
-  "mp_maxrounds",
-  "mp_overtime_enable",
-  "mp_overtime_maxrounds",
-  "mp_freezetime",
-  "mp_roundtime",
-  "mp_startmoney",
-  "mp_maxmoney",
-  "sv_password",
-  "sv_cheats",
-  "sv_pure",
-  "sv_minrate",
-  "sv_maxupdaterate",
-  "changelevel",
-  "map",
-  "bot_kick",
-  "bot_add",
-  "quit",
-  "_restart",
-  "exec",
-  "net_status",
-  "tv_record",
-  "tv_stoprecord",
-  "matchzy_pause",
-  "matchzy_unpause",
-  "matchzy_knife",
-  "matchzy_endmatch",
-  "matchzy_loadmatch",
-  "mp_scrambleteams",
-  "mp_unpause_match",
-  "mp_pause_match",
-]
+// CS2 commands / CVARs from comprehensive list (5000+ commands)
+// Source: https://github.com/armync/ArminC-CS2-Cvars
+const COMMANDS: string[] = cs2CommandsData.commands
 
 const DEFAULT_MACROS: Macro[] = [
   { label: "warmup → live", command: "mp_warmuptime 15 ; mp_warmup_end" },
@@ -231,7 +193,20 @@ export function Console({ serverId }: { serverId: string }) {
     if (!prefix) return []
     // Only autocomplete the (single-token) command word.
     if (/\s/.test(command.trimStart())) return []
-    return COMMANDS.filter((c) => c.startsWith(prefix) && c !== prefix)
+    
+    // With 5000+ commands, limit results to keep UI responsive
+    const MAX_SUGGESTIONS = 50
+    const results: string[] = []
+    
+    // Fast early exit: collect up to MAX_SUGGESTIONS matches
+    for (const cmd of COMMANDS) {
+      if (cmd.toLowerCase().startsWith(prefix) && cmd !== prefix) {
+        results.push(cmd)
+        if (results.length >= MAX_SUGGESTIONS) break
+      }
+    }
+    
+    return results
   }, [command])
 
   useEffect(() => {
