@@ -115,7 +115,7 @@ func configureLogAddress(logger *slog.Logger, mgr *rcon.Manager, servers []store
                                 cmds = append(cmds, "logaddress_add "+sink)
                         }
                         if httpSink != "" {
-                                cmds = append(cmds, "logaddress_add_http "+httpSink)
+                                cmds = append(cmds, `logaddress_add_http "`+httpSink+`"`)
                         }
                         cmds = append(cmds, "log on")
                         for attempt := 1; attempt <= 30; attempt++ {
