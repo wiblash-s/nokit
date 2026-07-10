@@ -18,7 +18,7 @@ Only a subset of the panel is implemented today; the rest exists as a demo/plann
 | Dashboard | ✅ Implemented |
 | Live Logs | ❌ Not built (demo only / planned) |
 | Players | ❌ Not built (demo only / planned) |
-| Maps | ❌ Not built (demo only / planned) |
+| Maps | ✅ Implemented | Standard map pool (12 maps), favorites system (localStorage), workshop map support, map cycle editor, RCON integration (changelevel, host_workshop_map) |
 | CVAR Presets | ❌ Not built (demo only / planned) |
 | Config Editor | ❌ Not built (demo only / planned) |
 | Plugins | ❌ Not built (demo only / planned) |
