@@ -1,16 +1,12 @@
-import { useState } from "react"
-import { Navigate, useParams } from "react-router-dom"
+import { Navigate, Outlet, useParams } from "react-router-dom"
 import { useServers } from "@/hooks/useServers"
+import { useServerStats } from "@/hooks/useServerStats"
 import { Header } from "@/components/header"
-import { Console } from "@/components/console"
-import { DashboardPage } from "@/pages/dashboard-page"
-
-type Tab = "dashboard" | "console"
 
 export function ServerPage() {
   const { id } = useParams<{ id: string }>()
   const state = useServers()
-  const [tab, setTab] = useState<Tab>("dashboard")
+  const { data } = useServerStats(id!)
 
   if (state.status === "loading") return null
   if (state.status === "error")
@@ -23,41 +19,17 @@ export function ServerPage() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <Header servers={state.servers} currentId={id!} onRefresh={state.refresh} />
-
-      {/* tab bar */}
-      <div className="border-b border-border">
-        <div className="mx-auto flex max-w-5xl gap-1 px-4">
-          {(["dashboard", "console"] as Tab[]).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`-mb-px border-b-2 px-3 py-2.5 text-sm font-medium capitalize transition-colors ${
-                tab === t
-                  ? "border-primary text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col p-4">
-        {tab === "dashboard" ? (
-          <DashboardPage
-            key={id}
-            serverId={id!}
-            serverName={server.name}
-            host={server.host}
-            onOpenConsole={() => setTab("console")}
-          />
-        ) : (
-          <div className="flex flex-1 flex-col">
-            <Console serverId={id!} />
-          </div>
-        )}
+      <Header
+        servers={state.servers}
+        currentId={id!}
+        onRefresh={state.refresh}
+        tickrate={data?.tick}
+        players={data?.players}
+        maxPlayers={data?.maxPlayers}
+        map={data?.map}
+      />
+      <main className="flex flex-1 flex-col">
+        <Outlet />
       </main>
     </div>
   )

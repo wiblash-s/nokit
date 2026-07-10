@@ -13,14 +13,12 @@ type Props = {
   serverId: string
   serverName: string
   host: string
-  onOpenConsole: () => void
 }
 
 export function DashboardPage({
   serverId,
   serverName,
   host,
-  onOpenConsole,
 }: Props) {
   const { online, loading, error, data, history, lastUpdated, rawStatus, exec } =
     useServerStats(serverId)
@@ -33,7 +31,7 @@ export function DashboardPage({
   const tickValue = data?.tick !== undefined ? `${data.tick.toFixed(1)} hz` : "—"
 
   return (
-    <div className="space-y-4">
+    <div className="p-6 space-y-4">
       {/* page header */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
@@ -112,7 +110,6 @@ export function DashboardPage({
           <RecentOutput
             rawStatus={rawStatus}
             lastUpdated={lastUpdated}
-            onOpenConsole={onOpenConsole}
           />
         </div>
       </div>

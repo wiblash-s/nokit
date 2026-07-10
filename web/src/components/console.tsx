@@ -436,7 +436,7 @@ export function Console({ serverId }: { serverId: string }) {
   // ---- render -------------------------------------------------------------
 
   return (
-    <div className="flex h-full flex-col gap-3">
+    <div className="flex h-full flex-col gap-3 p-6">
       {/* top bar */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
