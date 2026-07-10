@@ -18,7 +18,7 @@ Only a subset of the panel is implemented today; the rest exists as a demo/plann
 | Dashboard | ✅ Implemented |
 | Live Logs | ❌ Not built (demo only / planned) |
 | Players | ❌ Not built (demo only / planned) |
-| Maps | ✅ Implemented | Standard map pool (12 maps), favorites system (localStorage), workshop map support, map cycle editor, RCON integration (changelevel, host_workshop_map) |
+| Maps | ✅ Implemented | Standard map pool (12 maps), favorites system (localStorage), workshop maps fetched live via RCON (`maps *`), map cycle editor, RCON integration (changelevel, host_workshop_map) |
 | CVAR Presets | ❌ Not built (demo only / planned) |
 | Config Editor | ✅ Implemented | File browser tree view, code editor with line numbers, unsaved changes tracking, save/reload/exec via RCON, support for .cfg and .json files |
 | Plugins | ❌ Not built (demo only / planned) |

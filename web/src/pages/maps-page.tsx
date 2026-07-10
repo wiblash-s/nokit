@@ -19,12 +19,8 @@ type MapInfo = {
 }
 
 type WorkshopMap = {
-  id: string
-  name: string
-  author: string
-  subscribers: string
   workshopId: string
-  thumbnail: string
+  name: string
 }
 
 // ---------------------------------------------------------------------------
@@ -97,48 +93,34 @@ export function MapsPage({ serverId }: MapsPageProps) {
   const [workshopId, setWorkshopId] = useState("")
   const [mapCycle, setMapCycle] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
+  const [workshopMaps, setWorkshopMaps] = useState<WorkshopMap[]>([])
+  const [workshopLoading, setWorkshopLoading] = useState(false)
+  const [workshopError, setWorkshopError] = useState<string | null>(null)
 
-  // Demo workshop maps
-  const [workshopMaps] = useState<WorkshopMap[]>([
-    {
-      id: "ws_1",
-      name: "de_cache_redux",
-      author: "shawn",
-      subscribers: "281k",
-      workshopId: "3070900859",
-      thumbnail: "/maps/workshop_placeholder.jpg",
-    },
-    {
-      id: "ws_2",
-      name: "awp_lego",
-      author: "3kliksphilip",
-      subscribers: "92k",
-      workshopId: "3070192884",
-      thumbnail: "/maps/workshop_placeholder.jpg",
-    },
-    {
-      id: "ws_3",
-      name: "surf_kitsune_ksf",
-      author: "kitsune",
-      subscribers: "14k",
-      workshopId: "3071182234",
-      thumbnail: "/maps/workshop_placeholder.jpg",
-    },
-    {
-      id: "ws_4",
-      name: "de_season",
-      author: "sumamon",
-      subscribers: "441k",
-      workshopId: "3072201991",
-      thumbnail: "/maps/workshop_placeholder.jpg",
-    },
-  ])
+  const fetchWorkshopMaps = async () => {
+    setWorkshopLoading(true)
+    setWorkshopError(null)
+    try {
+      const res = await fetch(`/api/servers/${serverId}/maps/workshop`)
+      if (!res.ok) {
+        throw new Error(`Server returned ${res.status}`)
+      }
+      const data: WorkshopMap[] = await res.json()
+      setWorkshopMaps(data)
+    } catch (err) {
+      console.error("Failed to fetch workshop maps:", err)
+      setWorkshopError("Could not load workshop maps. Make sure the server is connected via RCON.")
+    } finally {
+      setWorkshopLoading(false)
+    }
+  }
 
   useEffect(() => {
     setFavorites(loadFavorites())
     setMapCycle(loadMapCycle())
+    fetchWorkshopMaps()
     // TODO: fetch current map from server via RCON `status` command
-  }, [])
+  }, [serverId])
 
   useEffect(() => {
     saveFavorites(favorites)
@@ -235,8 +217,8 @@ export function MapsPage({ serverId }: MapsPageProps) {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm">
-            <RefreshCw className="mr-2 h-4 w-4" />
+          <Button variant="outline" size="sm" onClick={fetchWorkshopMaps} disabled={workshopLoading}>
+            <RefreshCw className={cn("mr-2 h-4 w-4", workshopLoading && "animate-spin")} />
             Sync workshop
           </Button>
           <Button variant="outline" size="sm">
@@ -319,7 +301,7 @@ export function MapsPage({ serverId }: MapsPageProps) {
             Workshop
           </h2>
           <span className="text-xs text-muted-foreground">
-            281 MB cached · /home/cs2/server/csgo/maps/workshop
+            {workshopMaps.length} installed
           </span>
         </div>
 
@@ -335,11 +317,45 @@ export function MapsPage({ serverId }: MapsPageProps) {
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {workshopMaps.map((map) => (
-            <WorkshopMapCard key={map.id} map={map} />
-          ))}
-        </div>
+        {workshopError && (
+          <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            {workshopError}
+          </div>
+        )}
+
+        {workshopLoading ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div
+                key={i}
+                className="flex flex-col overflow-hidden rounded-lg border border-border"
+              >
+                <div className="aspect-video w-full animate-pulse bg-muted" />
+                <div className="flex flex-col gap-2 p-3">
+                  <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
+                  <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : workshopMaps.length === 0 && !workshopError ? (
+          <div className="rounded-lg border border-dashed border-border py-12 text-center text-sm text-muted-foreground">
+            No workshop maps found on this server.
+            <br />
+            Use the input above to download and switch to a workshop map by ID.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {workshopMaps.map((map) => (
+              <WorkshopMapCard
+                key={map.workshopId}
+                map={map}
+                onSwitch={() => changeMap(`workshop/${map.workshopId}/${map.name}`)}
+                disabled={loading}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Map Cycle Editor */}
@@ -471,33 +487,35 @@ function MapCard({
 
 type WorkshopMapCardProps = {
   map: WorkshopMap
-  onAddToCycle?: () => void
+  onSwitch?: () => void
+  disabled?: boolean
 }
 
-function WorkshopMapCard({ map }: WorkshopMapCardProps) {
+function WorkshopMapCard({ map, onSwitch, disabled }: WorkshopMapCardProps) {
   return (
     <div className="group flex flex-col overflow-hidden rounded-lg border border-border transition-all hover:border-primary">
       {/* Thumbnail placeholder */}
       <div className="aspect-video w-full bg-gradient-to-br from-purple-900/20 to-blue-900/20" />
-      
+
       <div className="flex flex-col gap-2 p-3">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold">{map.name}</h3>
-          <button
-            className="text-muted-foreground hover:text-foreground"
-            title="Add to favorite"
-          >
-            <Star className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span>by {map.author}</span>
-          <span>·</span>
-          <span>{map.subscribers} subs</span>
+          <h3 className="truncate font-semibold" title={map.name}>
+            {map.name}
+          </h3>
+          <Star className="h-4 w-4 shrink-0 text-muted-foreground" />
         </div>
         <div className="font-mono text-xs text-muted-foreground">
           #{map.workshopId}
         </div>
+        <Button
+          size="sm"
+          variant="outline"
+          className="mt-1 w-full text-xs"
+          onClick={onSwitch}
+          disabled={disabled}
+        >
+          Switch to map
+        </Button>
       </div>
     </div>
   )

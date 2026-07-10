@@ -23,7 +23,7 @@ Implementation will begin with the **Dashboard**.
 | Dashboard | ✅ Implemented | Live stat cards (CPU/tick/players) with sparklines, server status, quick actions, round info, recent output — polls `status`/`stats` over RCON every 6s |
 | Live Logs | ❌ Not built | Demo only / planned |
 | Players | ❌ Not built | Demo only / planned |
-| Maps | ✅ Implemented | Standard map pool (12 maps), favorites system (localStorage), workshop map support, map cycle editor, RCON integration (changelevel, host_workshop_map) |
+| Maps | ✅ Implemented | Standard map pool (12 maps), favorites system (localStorage), workshop maps fetched live via RCON (`maps *` → `GET /api/servers/{id}/maps/workshop`), map cycle editor, RCON integration (changelevel, host_workshop_map) |
 | CVAR Presets | ❌ Not built | Demo only / planned |
 | Config Editor | ✅ Implemented | File browser tree view, code editor with line numbers, unsaved changes tracking, save/reload/exec via RCON, support for .cfg and .json files |
 | Plugins | ❌ Not built | Demo only / planned |
