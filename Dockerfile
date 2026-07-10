@@ -47,14 +47,15 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 FROM alpine:3.21 AS runtime
 
 # ca-certificates is needed for any outbound TLS (e.g. future API calls).
-# docker-cli lets the panel tail the CS2 container's logs via `docker logs -f`
-# (Live Logs feature). Requires the host's Docker socket to be mounted — see
-# docker-compose.yml.
-RUN apk add --no-cache ca-certificates docker-cli
+# Live Logs are ingested over UDP (CS2 `logaddress_add`), so no docker-cli /
+# Docker socket is required — see docker-compose.yml.
+RUN apk add --no-cache ca-certificates
 
 COPY --from=go-builder /bin/defuse /defuse
 
+# 8080/tcp: web UI + API. 27500/udp: CS2 log ingestion (logaddress sink).
 EXPOSE 8080
+EXPOSE 27500/udp
 # No USER directive — let the orchestrator set the UID/GID via `user:` in
 # compose or the TrueNAS app config (e.g. user: "568:568").
 ENTRYPOINT ["/defuse"]

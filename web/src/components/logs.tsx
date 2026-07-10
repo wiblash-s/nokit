@@ -13,11 +13,12 @@ import { cn } from "@/lib/utils"
 // ---------------------------------------------------------------------------
 // Live server logs panel.
 //
-// Connects to the backend SSE endpoint `GET /api/logs/stream` (which tails
-// `docker logs -f <container>` on the CS2 container) and renders each incoming
-// line in real time. Supports a configurable retention window, auto-scroll
-// with a manual-scroll pause, a clear button, a download, and a connection
-// status indicator.
+// Connects to the backend SSE endpoint `GET /api/logs/stream`. The backend
+// receives CS2 server logs over UDP (the classic `logaddress_add` mechanism)
+// and fans each line out to connected clients. Renders each incoming line in
+// real time. Supports a configurable retention window, auto-scroll with a
+// manual-scroll pause, a clear button, a download, and a connection status
+// indicator.
 // ---------------------------------------------------------------------------
 
 type LogLine = {
@@ -230,7 +231,7 @@ export function LogsPanel() {
             <ScrollText className="size-4" /> Live Logs
           </h2>
           <p className="text-xs text-muted-foreground">
-            streaming <code>docker logs -f</code> over SSE ·{" "}
+            <code>logaddress</code> (UDP) over SSE ·{" "}
             {lines.length} line{lines.length === 1 ? "" : "s"} shown
           </p>
         </div>

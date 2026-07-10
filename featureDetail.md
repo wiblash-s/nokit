@@ -21,7 +21,7 @@ Implementation will begin with the **Dashboard**.
 | Multi-server switcher | ✅ Implemented | Add/remove servers (name, RCON host, password) via header |
 | RCON Console | ✅ Implemented | Full terminal UI: timestamps, color-coded output, ↑↓ history, Ctrl+L clear, Tab autocomplete (5000+ CS2 CVARs/commands), RCON macros sidebar with localStorage persistence, clickable history panel, live/paused scroll toggle, Copy session & Export |
 | Dashboard | ✅ Implemented | Live stat cards (CPU/tick/players) with sparklines, server status, quick actions, round info, recent output — polls `status`/`stats` over RCON every 6s |
-| Live Logs | ✅ Implemented | Real-time server console via `docker logs -f <container>` streamed over SSE (`GET /api/logs/stream`); configurable line retention (default 500, 50–2000), auto-scroll with manual-scroll pause, Clear, Download `.log`, connection status indicator. Container name from `CS2_CONTAINER_NAME` (default `cs2`). |
+| Live Logs | ✅ Implemented | Real-time server console ingested over **UDP** (CS2 `logaddress_add`, `internal/loghub`) and streamed over SSE (`GET /api/logs/stream`); configurable line retention (default 500, 50–2000), auto-scroll with manual-scroll pause, Clear, Download `.log`, connection status indicator. Bind port `CS2_LOG_LISTEN_PORT` (default `27500`), sink `CS2_LOG_SINK_ADDR`. No Docker socket required. |
 | Players | ❌ Not built | Demo only / planned |
 | Maps | ✅ Implemented | Standard map pool (12 maps), favorites system (localStorage), workshop maps fetched live via RCON (`maps *` → `GET /api/servers/{id}/maps/workshop`), map cycle editor, RCON integration (changelevel, host_workshop_map) |
 | CVAR Presets | ❌ Not built | Demo only / planned |
@@ -253,23 +253,34 @@ Example lines:
 
 #### ✅ As implemented in this fork
 
-The shipped Live Logs panel takes a simpler, dependency-free source that works
-out of the box with the `joedwards32/cs2` Docker image (no `srcds_logaddress`
-/ relay setup required):
+The shipped Live Logs panel follows the same approach as the demo spec
+(`srcds_logaddress`) but keeps the ingestion in-process — no external relay or
+Docker socket required:
 
-- **Source:** the backend tails the CS2 dedicated-server container with
-  `docker logs -f <container>` and merges its stdout **and** stderr into one
-  line stream.
+- **Source / ingestion (`internal/loghub`):** the backend binds a **UDP**
+  socket (`CS2_LOG_LISTEN_PORT`, default `27500`) and receives the CS2 server's
+  logs directly. CS2 is told where to send them via RCON on startup
+  (`logaddress_add <CS2_LOG_SINK_ADDR>; log on`, retried until the server is
+  reachable). Each incoming datagram is a Source "log packet"
+  (`0xFFFFFFFF` header, `R`/`S` type byte, optional `sv_logsecret`, then the
+  `L …` body); `loghub.ParsePacket` strips the framing and yields a clean line.
+- **Fan-out:** a small pub/sub hub broadcasts every parsed line to all current
+  subscribers over buffered channels. A slow subscriber drops lines rather than
+  blocking the UDP reader.
 - **Transport:** each line is relayed to the browser over **SSE** as a
   `data: <line>\n\n` event via `GET /api/logs/stream` (session-cookie
   protected, same auth as the rest of `/api/`). A `: heartbeat` comment is sent
   every 15s to keep the connection and any intermediary proxies alive.
-- **Container name:** read from the `CS2_CONTAINER_NAME` env var, defaulting to
-  `cs2`.
-- **Lifecycle / cleanup:** the child `docker logs` process is bound to the HTTP
-  request context (`exec.CommandContext`), so it is killed and reaped as soon as
-  the SSE client disconnects. On container stop the handler emits an `event: end`
-  frame and the browser shows `reconnecting`.
+- **Configuration:**
+  - `CS2_LOG_LISTEN_PORT` — UDP port the hub binds (default `27500`).
+  - `CS2_LOG_SINK_ADDR` — address handed to the CS2 server via
+    `logaddress_add`, as reachable from the CS2 container (e.g. `defuse:27500`).
+    If empty, auto-config is skipped and the operator wires `logaddress_add`
+    themselves.
+- **Lifecycle / cleanup:** each SSE client subscribes to the hub on connect and
+  is unsubscribed (its channel closed) when the request context is cancelled
+  (client disconnect). On hub shutdown the handler emits an `event: end` frame
+  and the browser shows `reconnecting`.
 - **Frontend (`web/src/components/logs.tsx`):** connects with `EventSource`,
   renders lines with best-effort color coding, and provides:
   - a **Max lines** numeric input (default `500`, range `50`–`2000`, persisted
@@ -279,9 +290,10 @@ out of the box with the `joedwards32/cs2` Docker image (no `srcds_logaddress`
   - a **Clear** button and a **Download `.log`** export;
   - a **connection status indicator** (`connecting` / `connected` /
     `reconnecting` / `error`).
-- **Deployment:** the runtime image installs `docker-cli` and the host Docker
-  socket is mounted read-only in `docker-compose.yml` so the panel can reach the
-  daemon.
+- **Deployment:** the panel publishes `27500/udp`; no `docker-cli` and no
+  Docker socket mount are needed. The bundled `docker-compose.yml` runs the
+  panel and a `joedwards32/cs2` server on a shared network and sets
+  `CS2_LOG_SINK_ADDR=defuse:27500`.
 
 Filter tabs, grep/regex search, and the throughput/backpressure footer from the
 demo spec above are **not yet** wired up — the current panel focuses on a
