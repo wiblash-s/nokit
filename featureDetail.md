@@ -23,7 +23,7 @@ Implementation will begin with the **Dashboard**.
 | Dashboard | ✅ Implemented | Live stat cards (CPU/tick/players) with sparklines, server status, quick actions, round info, recent output — polls `status`/`stats` over RCON every 6s |
 | Live Logs | ❌ Not built | Demo only / planned |
 | Players | ❌ Not built | Demo only / planned |
-| Maps | ❌ Not built | Demo only / planned |
+| Maps | ✅ Implemented | Standard map pool (12 maps), favorites system (localStorage), workshop map support, map cycle editor, RCON integration (changelevel, host_workshop_map) |
 | CVAR Presets | ❌ Not built | Demo only / planned |
 | Config Editor | ✅ Implemented | File browser tree view, code editor with line numbers, unsaved changes tracking, save/reload/exec via RCON, support for .cfg and .json files |
 | Plugins | ❌ Not built | Demo only / planned |
@@ -356,6 +356,15 @@ Label `MAP CYCLE`. Ordered chip list (each chip has a numeric order + name + `×
 `order: 01 de_mirage × · 02 de_inferno × · 03 de_nuke × · 04 de_dust2 × · 05 de_anubis × · 06 de_overpass × · 07 de_ancient ×`
 - `+ add` button to append a map.
 - Right: `save mapcycle.txt` button (writes the cycle to mapcycle.txt).
+
+> **✅ Current implementation status (this fork):** The Maps panel is fully built as a functional page. The component lives in `web/src/pages/maps-page.tsx` (exported as `MapsPage`) and is rendered from the `/servers/:id/maps` route in `App.tsx`. It uses the existing `POST /api/servers/:id/rcon` endpoint for map changes — no new backend routes were added.
+> - **Standard map pool**: 12 CS2 maps loaded from `web/src/data/cs2-maps.json` (Mirage, Inferno, Dust II, Nuke, Overpass, Anubis, Vertigo, Ancient, Train, Office, Italy, aim_botz) with categorization by mode (comp, hostage, practice).
+> - **Favorites system**: Users can star/unstar maps; favorites are persisted in `localStorage` under `nokit_map_favorites`. A "show favs only" toggle filters the grid to show only favorited maps. Favorite maps are displayed in a compact horizontal row at the top for quick access.
+> - **Active map tracking**: The currently active map is highlighted with a green border and "● active" badge. Map changes are triggered via RCON `changelevel <mapid>` command.
+> - **Workshop maps**: Demo section displays 4 workshop maps (de_cache_redux, awp_lego, surf_kitsune_ksf, de_season) with author, subscriber count, and workshop ID. Users can input a workshop ID and load it via RCON `host_workshop_map <workshopid>` command.
+> - **Map cycle editor**: Displays an ordered list of maps in the rotation (persisted in `localStorage` under `nokit_map_cycle`). Users can remove maps from the cycle; the default cycle includes 7 competitive maps. "Save mapcycle.txt" button is ready for backend integration to write the cycle to the server's mapcycle.txt file.
+> - **Responsive grid**: Map cards display in a 4-column grid (responsive: 1 col mobile, 2 col tablet, 3 col desktop, 4 col wide) with hover states and click-to-change functionality.
+> - **TODO**: Map thumbnail images (currently showing placeholder gradients), drag-and-drop reordering for map cycle, Steam Workshop API integration for fetching workshop map metadata and thumbnails.
 
 ---
 
