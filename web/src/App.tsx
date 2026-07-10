@@ -7,6 +7,7 @@ import { DashboardPage } from "@/pages/dashboard-page"
 import { ConfigEditorPage } from "@/pages/config-editor-page"
 import { MapsPage } from "@/pages/maps-page"
 import { Console } from "@/components/console"
+import { LogsPanel } from "@/components/logs"
 import { Header } from "./components/header"
 import { Layout } from "./components/layout"
 import { Sidebar } from "./components/sidebar"
@@ -111,7 +112,7 @@ export default function App() {
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<DashboardRoute />} />
           <Route path="console" element={<ConsoleRoute />} />
-          <Route path="logs" element={<PlaceholderPage title="Live Logs" />} />
+          <Route path="logs" element={<LogsPanel />} />
           <Route path="players" element={<PlaceholderPage title="Players" />} />
           <Route path="maps" element={<MapsRoute />} />
           <Route path="presets" element={<PlaceholderPage title="CVAR Presets" />} />

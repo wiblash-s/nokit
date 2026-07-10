@@ -43,6 +43,7 @@ func (s *Server) Handler() http.Handler {
         protected.Handle("DELETE /api/servers/{id}", api.Wrap(s.logger, api.DeleteServerHandler(s.store, s.rcon)))
         protected.Handle("POST /api/servers/{id}/rcon", api.Wrap(s.logger, api.RCONHandler(s.rcon)))
         protected.Handle("GET /api/servers/{id}/maps/workshop", api.Wrap(s.logger, api.WorkshopMapsHandler(s.rcon)))
+        protected.Handle("GET /api/logs/stream", api.Wrap(s.logger, api.LogsStreamHandler()))
 
         mux.Handle("/api/", auth.Middleware(s.store, protected))
 

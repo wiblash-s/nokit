@@ -11,9 +11,14 @@ services:
       RCON_PASSWORD: ${RCON_PASSWORD}
       CONFIG_PATH: /etc/defuse/config.yaml
       DB_PATH: /data/nokit.db
+      # Name of the CS2 dedicated-server Docker container to tail for Live Logs.
+      CS2_CONTAINER_NAME: ${CS2_CONTAINER_NAME:-cs2}
     volumes:
       - ./config.yaml:/etc/defuse/config.yaml:ro
       - nokit_data:/data
+      # Mounting the host Docker socket lets the panel run `docker logs -f` on
+      # the CS2 container for the Live Logs feature. Read-only is sufficient.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
 
 volumes:
   nokit_data:
