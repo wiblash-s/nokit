@@ -2,9 +2,30 @@
 
 Self-hosted web admin panel for Counter-Strike 2 dedicated servers.
 
-RCON console, live log streaming, player management, map control, and multi-server support — all in a single Go binary you can run alongside your CS2 container.
+A **CS2 RCON web interface**, forked from [nokit / defuse](https://github.com/codevski/nokit). It provides an RCON console, live log streaming, player management, map control, and multi-server support — all in a single Go binary you can run alongside your CS2 container.
 
 > ⚠️ Early development. Not yet production-ready.
+
+## Feature Status
+
+Only a subset of the panel is implemented today; the rest exists as a demo/planned reference. The full breakdown — a status table plus an exhaustive per-feature specification captured from the [nokit demo](https://nokit.app/demo) — lives in **[`featureDetail.md`](./featureDetail.md)**.
+
+| Feature | Status |
+|---------|--------|
+| Login / Auth | ✅ Implemented |
+| Multi-server switcher | ✅ Implemented |
+| RCON Console | ✅ Implemented |
+| Dashboard | ❌ Not built (demo only / planned) |
+| Live Logs | ❌ Not built (demo only / planned) |
+| Players | ❌ Not built (demo only / planned) |
+| Maps | ❌ Not built (demo only / planned) |
+| CVAR Presets | ❌ Not built (demo only / planned) |
+| Config Editor | ❌ Not built (demo only / planned) |
+| Plugins | ❌ Not built (demo only / planned) |
+| Scheduler | ❌ Not built (demo only / planned) |
+| Admin | ❌ Not built (demo only / planned) |
+
+See **[`featureDetail.md`](./featureDetail.md)** for the complete demo reference used to implement these features.
 
 ## Features
 
