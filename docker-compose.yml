@@ -5,20 +5,58 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"
+      # UDP log sink: CS2 sends its logs here via `logaddress_add`.
       - "27500:27500/udp"
     environment:
       PANEL_PASSWORD: ${PANEL_PASSWORD}
       RCON_PASSWORD: ${RCON_PASSWORD}
       CONFIG_PATH: /etc/defuse/config.yaml
       DB_PATH: /data/nokit.db
-      # Name of the CS2 dedicated-server Docker container to tail for Live Logs.
-      CS2_CONTAINER_NAME: ${CS2_CONTAINER_NAME:-cs2}
+      # ---- Live Logs (UDP ingestion) ----
+      # UDP port the panel binds to receive CS2 logs. Must match the port
+      # published above and the port in CS2_LOG_SINK_ADDR.
+      CS2_LOG_LISTEN_PORT: ${CS2_LOG_LISTEN_PORT:-27500}
+      # Address the CS2 server should send its logs to, as reachable *from the
+      # CS2 container*. In this single-stack setup that's the defuse service
+      # name on the shared Docker network. The panel issues
+      # `logaddress_add <addr>; log on` over RCON on startup.
+      CS2_LOG_SINK_ADDR: ${CS2_LOG_SINK_ADDR:-defuse:27500}
     volumes:
       - ./config.yaml:/etc/defuse/config.yaml:ro
       - nokit_data:/data
-      # Mounting the host Docker socket lets the panel run `docker logs -f` on
-      # the CS2 container for the Live Logs feature. Read-only is sufficient.
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - cs2net
+
+  # Example CS2 dedicated server (joedwards32/cs2). Remove this block if you
+  # run your CS2 server elsewhere — just point CS2_LOG_SINK_ADDR at the panel.
+  cs2:
+    image: joedwards32/cs2
+    container_name: cs2
+    restart: unless-stopped
+    ports:
+      - "27015:27015/tcp"
+      - "27015:27015/udp"
+    environment:
+      STEAMAPPVALIDATE: 0
+      CS2_SERVERNAME: "nokit-managed"
+      CS2_RCON_PORT: 27015
+      CS2_RCONPW: ${RCON_PASSWORD}
+      CS2_PW: ""
+      CS2_PORT: 27015
+      CS2_GAMEALIAS: competitive
+      SRCDS_TOKEN: ${STEAM_GSLT}
+      # Enable logging so `logaddress_add` (set by the panel over RCON) works.
+      CS2_LOG: "on"
+      CS2_LOG_DETAIL: 3
+    volumes:
+      - cs2_data:/home/steam/cs2-dedicated/
+    networks:
+      - cs2net
+
+networks:
+  cs2net:
+    driver: bridge
 
 volumes:
   nokit_data:
+  cs2_data:
