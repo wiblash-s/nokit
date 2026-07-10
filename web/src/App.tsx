@@ -4,6 +4,7 @@ import { useServers } from "@/hooks/useServers"
 import { LoginPage } from "@/pages/login-page"
 import { ServerPage } from "@/pages/server-page"
 import { DashboardPage } from "@/pages/dashboard-page"
+import { ConfigEditorPage } from "@/pages/config-editor-page"
 import { Console } from "@/components/console"
 import { Header } from "./components/header"
 import { Layout } from "./components/layout"
@@ -69,6 +70,11 @@ function ConsoleRoute() {
   return <Console serverId={id!} />
 }
 
+function ConfigEditorRoute() {
+  const { id } = useParams<{ id: string }>()
+  return <ConfigEditorPage serverId={id!} />
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -103,7 +109,7 @@ export default function App() {
           <Route path="players" element={<PlaceholderPage title="Players" />} />
           <Route path="maps" element={<PlaceholderPage title="Maps" />} />
           <Route path="presets" element={<PlaceholderPage title="CVAR Presets" />} />
-          <Route path="config" element={<PlaceholderPage title="Config Editor" />} />
+          <Route path="config" element={<ConfigEditorRoute />} />
           <Route path="plugins" element={<PlaceholderPage title="Plugins" />} />
           <Route path="scheduler" element={<PlaceholderPage title="Scheduler" />} />
           <Route path="admin" element={<PlaceholderPage title="Admin" />} />

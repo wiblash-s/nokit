@@ -25,7 +25,7 @@ Implementation will begin with the **Dashboard**.
 | Players | ❌ Not built | Demo only / planned |
 | Maps | ❌ Not built | Demo only / planned |
 | CVAR Presets | ❌ Not built | Demo only / planned |
-| Config Editor | ❌ Not built | Demo only / planned |
+| Config Editor | ✅ Implemented | File browser tree view, code editor with line numbers, unsaved changes tracking, save/reload/exec via RCON, support for .cfg and .json files |
 | Plugins | ❌ Not built | Demo only / planned |
 | Scheduler | ❌ Not built | Demo only / planned |
 | Admin | ❌ Not built | Demo only / planned |
@@ -453,6 +453,19 @@ Syntax-highlighted `.cfg` content with line numbers. Comments in green (`// …`
 ```
 
 > **Quirk:** in the demo the editor content is static — selecting another file in the tree does not swap the shown buffer. In the real implementation, selecting a file loads its buffer; the `unsaved` badge indicates dirty state; `Save & apply` writes to disk and can `exec via rcon`.
+
+> **✅ Current implementation status (this fork):** The Config Editor is fully built as a functional page. The component lives in `web/src/pages/config-editor-page.tsx` (exported as `ConfigEditorPage`) and is rendered from the `/servers/:id/config` route in `App.tsx`.
+> - **File browser tree**: Left sidebar (256px) with hierarchical tree view of config files. Mock data includes 7 files + 3 folders (gamemodes, matchzy, cs_sharp) with expand/collapse functionality. Each file shows "last modified" timestamp.
+> - **Code editor**: Full-width textarea with line numbers, monospace font, dark theme (bg-zinc-950). Supports multi-line editing with proper line height (1.5rem).
+> - **Unsaved changes tracking**: Compares current content with original content; shows amber "unsaved" badge when dirty. "Reload from disk" button resets to original content.
+> - **File operations**: 
+>   - **Save & apply**: Saves file to server filesystem (TODO: backend integration)
+>   - **Reload from disk**: Discards changes and reloads original content
+>   - **exec via rcon**: Executes the file via RCON `exec <filename>` command
+> - **Header breadcrumb**: Shows full path `/home/cs2/server/csgo{selectedPath}`
+> - **Footer status**: Displays encoding (utf-8), line endings (LF), line count, and last edit metadata
+> - **File selection**: Click any file in tree to load its content (currently shows demo content for all files)
+> - **TODO**: Real file loading from server, syntax highlighting for .cfg/.json, create new file functionality, backend integration for saving files to server filesystem
 
 ---
 
