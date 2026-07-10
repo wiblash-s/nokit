@@ -21,7 +21,7 @@ Implementation will begin with the **Dashboard**.
 | Multi-server switcher | ✅ Implemented | Add/remove servers (name, RCON host, password) via header |
 | RCON Console | ✅ Implemented | Full terminal UI: timestamps, color-coded output, ↑↓ history, Ctrl+L clear, Tab autocomplete (5000+ CS2 CVARs/commands), RCON macros sidebar with localStorage persistence, clickable history panel, live/paused scroll toggle, Copy session & Export |
 | Dashboard | ✅ Implemented | Live stat cards (CPU/tick/players) with sparklines, server status, quick actions, round info, recent output — polls `status`/`stats` over RCON every 6s |
-| Live Logs | ❌ Not built | Demo only / planned |
+| Live Logs | ✅ Implemented | Real-time server console via `docker logs -f <container>` streamed over SSE (`GET /api/logs/stream`); configurable line retention (default 500, 50–2000), auto-scroll with manual-scroll pause, Clear, Download `.log`, connection status indicator. Container name from `CS2_CONTAINER_NAME` (default `cs2`). |
 | Players | ❌ Not built | Demo only / planned |
 | Maps | ✅ Implemented | Standard map pool (12 maps), favorites system (localStorage), workshop maps fetched live via RCON (`maps *` → `GET /api/servers/{id}/maps/workshop`), map cycle editor, RCON integration (changelevel, host_workshop_map) |
 | CVAR Presets | ❌ Not built | Demo only / planned |
@@ -249,7 +249,43 @@ Example lines:
 #### Stream footer
 `tail ⟩ awaiting next event · backpressure 0 · last frame 1.2s ago` with a green **● SSE** connection indicator (right).
 
-> **Implementation notes:** logs are ingested via `srcds_logaddress` and streamed to the browser over **Server-Sent Events (SSE)** through nokit-relay. The stream shows backpressure and last-frame timing.
+> **Implementation notes (demo/reference):** logs are ingested via `srcds_logaddress` and streamed to the browser over **Server-Sent Events (SSE)** through nokit-relay. The stream shows backpressure and last-frame timing.
+
+#### ✅ As implemented in this fork
+
+The shipped Live Logs panel takes a simpler, dependency-free source that works
+out of the box with the `joedwards32/cs2` Docker image (no `srcds_logaddress`
+/ relay setup required):
+
+- **Source:** the backend tails the CS2 dedicated-server container with
+  `docker logs -f <container>` and merges its stdout **and** stderr into one
+  line stream.
+- **Transport:** each line is relayed to the browser over **SSE** as a
+  `data: <line>\n\n` event via `GET /api/logs/stream` (session-cookie
+  protected, same auth as the rest of `/api/`). A `: heartbeat` comment is sent
+  every 15s to keep the connection and any intermediary proxies alive.
+- **Container name:** read from the `CS2_CONTAINER_NAME` env var, defaulting to
+  `cs2`.
+- **Lifecycle / cleanup:** the child `docker logs` process is bound to the HTTP
+  request context (`exec.CommandContext`), so it is killed and reaped as soon as
+  the SSE client disconnects. On container stop the handler emits an `event: end`
+  frame and the browser shows `reconnecting`.
+- **Frontend (`web/src/components/logs.tsx`):** connects with `EventSource`,
+  renders lines with best-effort color coding, and provides:
+  - a **Max lines** numeric input (default `500`, range `50`–`2000`, persisted
+    to `localStorage`) capping how many lines are retained in memory/DOM;
+  - **auto-scroll** to the bottom that **pauses** automatically when the user
+    scrolls up, with a *jump to latest* pill to resume;
+  - a **Clear** button and a **Download `.log`** export;
+  - a **connection status indicator** (`connecting` / `connected` /
+    `reconnecting` / `error`).
+- **Deployment:** the runtime image installs `docker-cli` and the host Docker
+  socket is mounted read-only in `docker-compose.yml` so the panel can reach the
+  daemon.
+
+Filter tabs, grep/regex search, and the throughput/backpressure footer from the
+demo spec above are **not yet** wired up — the current panel focuses on a
+reliable real-time stream with retention, auto-scroll, and export.
 
 ---
 

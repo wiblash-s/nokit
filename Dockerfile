@@ -47,7 +47,10 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 FROM alpine:3.21 AS runtime
 
 # ca-certificates is needed for any outbound TLS (e.g. future API calls).
-RUN apk add --no-cache ca-certificates
+# docker-cli lets the panel tail the CS2 container's logs via `docker logs -f`
+# (Live Logs feature). Requires the host's Docker socket to be mounted — see
+# docker-compose.yml.
+RUN apk add --no-cache ca-certificates docker-cli
 
 COPY --from=go-builder /bin/defuse /defuse
 
