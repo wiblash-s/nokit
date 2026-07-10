@@ -16,7 +16,7 @@ Only a subset of the panel is implemented today; the rest exists as a demo/plann
 | Multi-server switcher | ✅ Implemented |
 | RCON Console | ✅ Implemented | Full terminal UI: timestamps, color-coded output, ↑↓ history, Ctrl+L clear, inline suggestion list autocomplete (top 8 ranked hits, prefix-highlighted, appears after first character; navigable with ↑↓, Tab/Enter to fill, Escape to dismiss, mouse click) for 5000+ CS2 CVARs/commands, RCON macros sidebar with localStorage persistence, clickable history panel, live/paused scroll toggle, Copy session & Export |
 | Dashboard | ✅ Implemented |
-| Live Logs | ✅ Implemented | Real-time server console streamed from `docker logs -f <container>` over SSE (`GET /api/logs/stream`); configurable line retention (default 500, 50–2000), auto-scroll with manual-scroll pause, Clear/Download, connection status indicator |
+| Live Logs | ✅ Implemented | Real-time server console received over UDP (`logaddress_add`) and streamed to the browser over SSE (`GET /api/logs/stream`); configurable line retention (default 500, 50–2000), auto-scroll with manual-scroll pause, Clear/Download, connection status indicator. No Docker socket required |
 | Players | ❌ Not built (demo only / planned) |
 | Maps | ✅ Implemented | Standard map pool (12 maps), favorites system (localStorage), workshop maps fetched live via RCON (`maps *`), map cycle editor, RCON integration (changelevel, host_workshop_map) |
 | CVAR Presets | ❌ Not built (demo only / planned) |
@@ -67,9 +67,10 @@ See [`config.example.yml`](./config.example.yaml) and [`.env.example`](./.env.ex
 ## Live Logs
 
 The **Live Logs** panel (sidebar → *Live Logs*) streams your CS2 dedicated
-server's console output in real time. It tails the server container with
-`docker logs -f <container>` on the backend and relays each line to the browser
-over **Server-Sent Events** (`GET /api/logs/stream`).
+server's console output in real time. The backend receives the server's logs
+over **UDP** using CS2's built-in `logaddress_add` mechanism, then relays each
+line to the browser over **Server-Sent Events** (`GET /api/logs/stream`). No
+Docker socket is required.
 
 This is the quickest way to watch things like workshop-map downloads: after
 issuing `host_workshop_map <id>` from the RCON console, the download progress
@@ -87,23 +88,35 @@ and map-load messages appear in the log stream.
 - **Connection status indicator** (`connecting` / `connected` / `reconnecting` /
   `error`). The stream reconnects automatically and sends a heartbeat every 15s.
 
+**How it works:**
+
+1. The panel binds a UDP socket on `CS2_LOG_LISTEN_PORT` (default `27500`).
+2. On startup it issues `logaddress_add <CS2_LOG_SINK_ADDR>; log on` to each
+   server over RCON (retrying until the server is up), so the CS2 server begins
+   streaming its console to the panel. The panel parses the Source log packets
+   and fans each line out to connected browsers.
+
 **Configuration:**
 
-- `CS2_CONTAINER_NAME` — name of the CS2 container to tail. Defaults to `cs2`.
-- The panel needs to run `docker` and reach the Docker daemon. In the provided
-  `docker-compose.yml` this is wired up by installing `docker-cli` in the image
-  and mounting the host socket read-only:
+- `CS2_LOG_LISTEN_PORT` — UDP port the panel binds to receive logs. Default
+  `27500`. Publish this port (`udp`) on the panel container.
+- `CS2_LOG_SINK_ADDR` — address the CS2 server should send its logs to, **as
+  reachable from the CS2 container** (e.g. the panel's service name on the
+  shared Docker network, `defuse:27500`). Leave empty to configure
+  `logaddress_add` yourself in the CS2 server instead.
 
   ```yaml
+  ports:
+    - "27500:27500/udp"
   environment:
-    CS2_CONTAINER_NAME: ${CS2_CONTAINER_NAME:-cs2}
-  volumes:
-    - /var/run/docker.sock:/var/run/docker.sock:ro
+    CS2_LOG_LISTEN_PORT: ${CS2_LOG_LISTEN_PORT:-27500}
+    CS2_LOG_SINK_ADDR: ${CS2_LOG_SINK_ADDR:-defuse:27500}
   ```
 
-> ⚠️ Mounting the Docker socket grants the container control over the host's
-> Docker daemon. Only enable this on hosts you trust. A read-only mount still
-> allows `docker logs`.
+> ℹ️ No Docker socket mount and no `docker-cli` are needed — logs travel over
+> UDP directly from the game server, which is both simpler and more secure.
+> Make sure the CS2 server has logging enabled (`CS2_LOG=on` for the
+> `joedwards32/cs2` image) so `logaddress_add` has something to forward.
 
 ## License
 
