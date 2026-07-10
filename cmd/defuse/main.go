@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -33,6 +35,48 @@ func logListenPort() int {
 	return defaultLogPort
 }
 
+// resolveSink converts a "host:port" sink into "ip:port". If host is already a
+// literal IP it is returned unchanged. If DNS resolution fails, the original
+// value is returned so behaviour degrades gracefully. All resolved candidates
+// are logged to aid troubleshooting multi-network setups.
+func resolveSink(logger *slog.Logger, sink string) string {
+	host, port, err := net.SplitHostPort(sink)
+	if err != nil {
+		// No port or malformed; leave as-is and let logaddress_add complain.
+		logger.Warn("CS2_LOG_SINK_ADDR is not host:port; using as-is", "sink", sink, "error", err)
+		return sink
+	}
+
+	// Already a numeric IP — nothing to resolve.
+	if net.ParseIP(host) != nil {
+		return sink
+	}
+
+	ips, err := net.LookupIP(host)
+	if err != nil || len(ips) == 0 {
+		logger.Warn("could not resolve CS2_LOG_SINK_ADDR host to an IP; using hostname (logaddress_add may not resolve DNS)",
+			"host", host, "error", err)
+		return sink
+	}
+
+	// Prefer the first IPv4 address; fall back to the first address of any kind.
+	var chosen net.IP
+	for _, ip := range ips {
+		if v4 := ip.To4(); v4 != nil {
+			chosen = v4
+			break
+		}
+	}
+	if chosen == nil {
+		chosen = ips[0]
+	}
+
+	resolved := net.JoinHostPort(chosen.String(), port)
+	logger.Info("resolved CS2_LOG_SINK_ADDR to IP for logaddress_add",
+		"host", host, "candidates", fmt.Sprintf("%v", ips), "chosen", resolved)
+	return resolved
+}
+
 // configureLogAddress points each CS2 server at our UDP log sink via RCON.
 // The sink address (what the CS2 server should send its logs to, as reachable
 // from the CS2 container — e.g. "defuse:27500") comes from CS2_LOG_SINK_ADDR.
@@ -48,6 +92,12 @@ func configureLogAddress(logger *slog.Logger, mgr *rcon.Manager, servers []store
 			"hint", "set it (e.g. defuse:27500) or configure logaddress_add in the CS2 server yourself")
 		return
 	}
+
+	// The Source engine's logaddress_add is unreliable at resolving DNS
+	// hostnames — it effectively needs a numeric IP:port. If the sink uses a
+	// hostname (e.g. "defuse:27500"), resolve it to an IP up front so CS2 can
+	// actually reach us. Fall back to the raw value if resolution fails.
+	sink = resolveSink(logger, sink)
 
 	for _, sv := range servers {
 		go func(id string) {
