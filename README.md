@@ -15,7 +15,7 @@ Only a subset of the panel is implemented today; the rest exists as a demo/plann
 | Login / Auth | ✅ Implemented |
 | Multi-server switcher | ✅ Implemented |
 | RCON Console | ✅ Implemented |
-| Dashboard | ❌ Not built (demo only / planned) |
+| Dashboard | ✅ Implemented |
 | Live Logs | ❌ Not built (demo only / planned) |
 | Players | ❌ Not built (demo only / planned) |
 | Maps | ❌ Not built (demo only / planned) |

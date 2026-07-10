@@ -20,7 +20,7 @@ Implementation will begin with the **Dashboard**.
 | Login / Auth | ✅ Implemented | Password-based login, session tokens in SQLite |
 | Multi-server switcher | ✅ Implemented | Add/remove servers (name, RCON host, password) via header |
 | RCON Console | ✅ Implemented | Send raw commands, get output back |
-| Dashboard | ❌ Not built | Demo only / planned |
+| Dashboard | ✅ Implemented | Live stat cards (CPU/tick/players) with sparklines, server status, quick actions, round info, recent output — polls `status`/`stats` over RCON every 6s |
 | Live Logs | ❌ Not built | Demo only / planned |
 | Players | ❌ Not built | Demo only / planned |
 | Maps | ❌ Not built | Demo only / planned |
@@ -143,6 +143,13 @@ Event rows (timestamp + actor + action):
 - `12:18  system GotvFix: bind failure`
 
 > **Implementation notes:** dashboard/stats auto-refresh every ~4s. The stat cards and mini charts are driven by the `status` RCON dump plus a metrics history buffer. The Recent events panel mirrors the Admin → Audit log.
+>
+> **✅ Current implementation status (this fork):** The Dashboard is built and is the default view when a server is selected (`web/src/pages/dashboard-page.tsx`), with a Dashboard/Console tab bar in `server-page.tsx`. It polls the `status` and `stats` RCON commands every 6s via the `useServerStats` hook (`web/src/hooks/useServerStats.ts`), parsing them with `web/src/lib/rcon-parse.ts` (tolerant of multiple CS2 output formats).
+> - **Stat cards** (`StatsCard` + `Sparkline`): Players (green), Tick rate (orange, target 128), CPU (blue area chart, with FPS sub-line), and RAM. Sparklines are rendered from a rolling in-memory history. RAM is shown as `n/a` because CS2's `stats`/`status` do not report server memory over RCON.
+> - **Server status** (`ServerStatus`): online/offline dot, name, address, map, hostname, players, uptime, version, OS — all parsed from `status`/`stats`.
+> - **Quick actions** (`QuickActions`): Restart server (`_restart`, confirmed), match/practice/pug segmented toggle (`exec <mode>`), clear password (`sv_password ""`), End warmup (`mp_warmup_end`), Auto-shuffle teams (`mp_scrambleteams 1`), and Stop server (`quit`, confirmed) — each sends the command over the existing `/api/servers/:id/rcon` endpoint and surfaces a success/error line.
+> - **Round info** (`RoundInfo`): shows map, phase (live/offline) and player count from `status`; round number/score/timer are shown as `—` with a note that they will come from the Live Logs stream (not exposed by `status`/`stats`).
+> - **Recent output** (`RecentOutput`): shows the last lines of the most recent `status` poll and a link that switches to the full Console tab.
 
 ---
 
