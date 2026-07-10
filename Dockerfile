@@ -39,12 +39,19 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -ldflags="-s -w" -o /bin/defuse ./cmd/defuse
 
 # ---------------------------------------------------------------------------
-# Stage 3 — runtime: minimal distroless image with just the binary.
+# Stage 3 — runtime: minimal alpine image.
+# Alpine (unlike distroless) accepts arbitrary UID/GID at runtime, which
+# allows TrueNAS Scale / other NAS platforms to run the container as a
+# specific user (e.g. 568) that owns the volume mount.
 # ---------------------------------------------------------------------------
-FROM gcr.io/distroless/static-debian12 AS runtime
+FROM alpine:3.21 AS runtime
+
+# ca-certificates is needed for any outbound TLS (e.g. future API calls).
+RUN apk add --no-cache ca-certificates
 
 COPY --from=go-builder /bin/defuse /defuse
 
 EXPOSE 8080
-USER nonroot:nonroot
+# No USER directive — let the orchestrator set the UID/GID via `user:` in
+# compose or the TrueNAS app config (e.g. user: "568:568").
 ENTRYPOINT ["/defuse"]
