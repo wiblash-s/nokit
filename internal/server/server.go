@@ -11,6 +11,7 @@ import (
         "github.com/codevski/defuse/internal/auth"
         "github.com/codevski/defuse/internal/loghub"
         "github.com/codevski/defuse/internal/rcon"
+        "github.com/codevski/defuse/internal/steam"
         "github.com/codevski/defuse/internal/store"
 )
 
@@ -20,16 +21,18 @@ type Server struct {
         store  *store.Store
         rcon   *rcon.Manager
         loghub *loghub.Hub
+        steam  *steam.Client
         creds  auth.Credentials
 }
 
-func New(logger *slog.Logger, dist fs.FS, st *store.Store, mgr *rcon.Manager, hub *loghub.Hub, creds auth.Credentials) *Server {
+func New(logger *slog.Logger, dist fs.FS, st *store.Store, mgr *rcon.Manager, hub *loghub.Hub, steamClient *steam.Client, creds auth.Credentials) *Server {
         return &Server{
                 logger: logger,
                 dist:   dist,
                 store:  st,
                 rcon:   mgr,
                 loghub: hub,
+                steam:  steamClient,
                 creds:  creds,
         }
 }
@@ -54,7 +57,8 @@ func (s *Server) Handler() http.Handler {
         protected.Handle("POST /api/servers", api.Wrap(s.logger, api.AddServerHandler(s.store, s.rcon)))
         protected.Handle("DELETE /api/servers/{id}", api.Wrap(s.logger, api.DeleteServerHandler(s.store, s.rcon)))
         protected.Handle("POST /api/servers/{id}/rcon", api.Wrap(s.logger, api.RCONHandler(s.rcon)))
-        protected.Handle("GET /api/servers/{id}/maps/workshop", api.Wrap(s.logger, api.WorkshopMapsHandler(s.rcon)))
+        protected.Handle("GET /api/servers/{id}/maps/workshop", api.Wrap(s.logger, api.WorkshopMapsHandler(s.rcon, s.steam)))
+        protected.Handle("GET /api/maps/thumbnail/{id}", api.Wrap(s.logger, api.ThumbnailHandler(s.steam)))
         protected.Handle("GET /api/logs/stream", api.Wrap(s.logger, api.LogsStreamHandler(s.loghub)))
 
         mux.Handle("/api/", auth.Middleware(s.store, protected))

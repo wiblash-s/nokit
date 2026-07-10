@@ -6,12 +6,17 @@ import (
 	"strings"
 
 	"github.com/codevski/defuse/internal/rcon"
+	"github.com/codevski/defuse/internal/steam"
 )
 
 // WorkshopMapInfo represents a single installed workshop map returned by the API.
 type WorkshopMapInfo struct {
 	WorkshopID string `json:"workshopId"`
 	Name       string `json:"name"`
+	// ThumbnailURL points at the panel's own thumbnail endpoint when Steam
+	// thumbnail resolution is enabled (a STEAM_API_KEY is configured). It is
+	// empty otherwise, signalling the UI to fall back to a placeholder.
+	ThumbnailURL string `json:"thumbnailUrl,omitempty"`
 }
 
 // WorkshopMapsHandler lists installed workshop maps by executing the RCON
@@ -22,7 +27,12 @@ type WorkshopMapInfo struct {
 //	workshop/3070900859/de_cache_redux
 //
 // This handler parses that format and de-duplicates results by workshop ID.
-func WorkshopMapsHandler(mgr *rcon.Manager) Handler {
+//
+// When a Steam client is configured (a STEAM_API_KEY is present), each map is
+// annotated with a ThumbnailURL and the panel kicks off a background prefetch so
+// thumbnails are cached and ready by the time the browser requests them. A nil
+// steam client disables both behaviours.
+func WorkshopMapsHandler(mgr *rcon.Manager, steamClient *steam.Client) Handler {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		id := r.PathValue("id")
 		if id == "" {
@@ -35,7 +45,51 @@ func WorkshopMapsHandler(mgr *rcon.Manager) Handler {
 		}
 
 		maps := parseWorkshopMaps(out)
+
+		if steamClient.Enabled() {
+			ids := make([]string, 0, len(maps))
+			for i := range maps {
+				maps[i].ThumbnailURL = "/api/maps/thumbnail/" + maps[i].WorkshopID
+				ids = append(ids, maps[i].WorkshopID)
+			}
+			// Warm the cache in the background so the UI gets real images without
+			// each card blocking on a Steam round-trip.
+			steamClient.Prefetch(ids)
+		}
+
 		return JSON(w, http.StatusOK, maps)
+	}
+}
+
+// ThumbnailHandler serves a Steam Workshop map preview image for the workshop ID
+// in the URL path. Images are cached on disk after the first request, so this
+// hits the Steam API at most once per item.
+//
+// Responses are marked cacheable by the browser to avoid re-requesting images
+// that rarely change. If the Steam client is disabled or the item has no preview
+// image, an appropriate error status is returned and the UI falls back to a
+// placeholder gradient.
+func ThumbnailHandler(steamClient *steam.Client) Handler {
+	return func(w http.ResponseWriter, r *http.Request) error {
+		if !steamClient.Enabled() {
+			return NotFound("thumbnails unavailable: STEAM_API_KEY not configured")
+		}
+
+		id := r.PathValue("id")
+		if id == "" {
+			return BadRequest("missing workshop id")
+		}
+
+		path, err := steamClient.ThumbnailPath(r.Context(), id)
+		if err != nil {
+			// Not found is the friendliest signal for the UI's onError fallback,
+			// whether the item lacks a preview or the ID was malformed.
+			return WrapHTTP(err, http.StatusNotFound, "thumbnail unavailable")
+		}
+
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		http.ServeFile(w, r, path)
+		return nil
 	}
 }
 

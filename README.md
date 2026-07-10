@@ -19,7 +19,7 @@ Only a subset of the panel is implemented today; the rest exists as a demo/plann
 | Live Logs | ✅ Implemented | Real-time server console received over UDP (`logaddress_add`) **and HTTP (`logaddress_add_http`)** and streamed to the browser over SSE (`GET /api/logs/stream`); configurable line retention (default 500, 50–2000), auto-scroll with manual-scroll pause, Clear/Download, connection status indicator. No Docker socket required |
 | HTTP Log Listener | ✅ Implemented | Public `POST /api/logs/http` endpoint accepts CS2 `logaddress_add_http` plain-text payloads and feeds them into the **same** loghub pipeline as the UDP listener — so HTTP-sourced logs appear in Live Logs and drive the same workshop-map download verification. Coexists with UDP (both run at once). Optional `CS2_LOG_HTTP_TOKEN` shared-secret guard |
 | Players | ❌ Not built (demo only / planned) |
-| Maps | ✅ Implemented | Standard map pool (12 maps), favorites system (localStorage), workshop maps fetched live via RCON (`maps *`), map cycle editor, RCON integration (changelevel, host_workshop_map) |
+| Maps | ✅ Implemented | Standard map pool (12 maps), favorites system (localStorage), workshop maps fetched live via RCON (`maps *`), **workshop map thumbnails via the Steam Web API** (cached on disk, served from `GET /api/maps/thumbnail/{id}`; enable with `STEAM_API_KEY`), map cycle editor, RCON integration (changelevel, host_workshop_map) |
 | CVAR Presets | ❌ Not built (demo only / planned) |
 | Config Editor | ✅ Implemented | File browser tree view, code editor with line numbers, unsaved changes tracking, save/reload/exec via RCON, support for .cfg and .json files |
 | Plugins | ❌ Not built (demo only / planned) |
@@ -64,6 +64,26 @@ Open `http://localhost:8080`.
 Servers are configured in `config.yml`. Secrets come from environment variables.
 
 See [`config.example.yml`](./config.example.yaml) and [`.env.example`](./.env.example).
+
+## Map thumbnails (Steam Web API)
+
+The **Maps** page can show real Steam Workshop preview images for installed
+workshop maps instead of placeholder gradients. To enable it:
+
+1. Grab a Steam Web API key at <https://steamcommunity.com/dev/apikey>.
+2. Set `STEAM_API_KEY` in your `.env` (see [`.env.example`](./.env.example)).
+3. Restart the panel.
+
+On startup the panel logs `steam workshop thumbnails enabled`. When the Maps
+page loads workshop maps, the backend resolves each map's `preview_url` via the
+Steam Web API, downloads the image **once**, and caches it under
+`THUMBNAIL_CACHE_DIR` (default `thumbnails/`). Images are then served from
+`GET /api/maps/thumbnail/{workshopId}`. If the key is unset — or Steam has no
+preview for a given item — the UI falls back to the gradient placeholder.
+
+> `STEAM_API_KEY` is **not** the same as `STEAM_GSLT`. GSLT makes the CS2 game
+> server public; the API key is used only by the panel to fetch workshop
+> metadata and thumbnails.
 
 ## Live Logs
 
