@@ -44,7 +44,7 @@ export function ServerPage() {
         </div>
       </div>
 
-      <main className="mx-auto w-full max-w-5xl flex-1 p-4">
+      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col p-4">
         {tab === "dashboard" ? (
           <DashboardPage
             key={id}
@@ -54,7 +54,9 @@ export function ServerPage() {
             onOpenConsole={() => setTab("console")}
           />
         ) : (
-          <Console serverId={id!} />
+          <div className="flex flex-1 flex-col">
+            <Console serverId={id!} />
+          </div>
         )}
       </main>
     </div>

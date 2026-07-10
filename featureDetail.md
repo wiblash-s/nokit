@@ -19,7 +19,7 @@ Implementation will begin with the **Dashboard**.
 |---------|--------|-------|
 | Login / Auth | ✅ Implemented | Password-based login, session tokens in SQLite |
 | Multi-server switcher | ✅ Implemented | Add/remove servers (name, RCON host, password) via header |
-| RCON Console | ✅ Implemented | Send raw commands, get output back |
+| RCON Console | ✅ Implemented | Full terminal UI: timestamps, color-coded output, ↑↓ history, Ctrl+L clear, Tab autocomplete (CS2 CVARs), RCON macros sidebar with localStorage persistence, clickable history panel, live/paused scroll toggle, Copy session & Export |
 | Dashboard | ✅ Implemented | Live stat cards (CPU/tick/players) with sparklines, server status, quick actions, round info, recent output — polls `status`/`stats` over RCON every 6s |
 | Live Logs | ❌ Not built | Demo only / planned |
 | Players | ❌ Not built | Demo only / planned |
@@ -197,6 +197,15 @@ Header: **↺ History**. Clickable recent commands list (re-run on click):
 - `mp_warmup_end`
 - `changelevel de_inferno`
 - `tv_record demos/2026-05-21`
+
+> **✅ Current implementation status (this fork):** The RCON Console is fully built as a real terminal UI. The component lives in `web/src/components/console.tsx` (exported as `Console`) and is rendered from the Console tab in `web/src/pages/server-page.tsx`. It uses the existing `POST /api/servers/:id/rcon` endpoint — no new backend routes were added.
+> - **Layout:** two-column split — a left terminal area (~65% width) and a right sidebar (~35% width).
+> - **Terminal output:** every command is echoed with a timestamp prefix `rcon HH:MM:SS >` and output is color-coded — green for the command prompt/echo, amber for CVAR values, red for errors, and white/muted for regular output.
+> - **Input bar:** monospace prompt `rcon ⟩` with shell-style keyboard shortcuts — ↑↓ navigate command history, Ctrl+L clears the terminal, and Tab triggers autocomplete with a dropdown covering 30+ common CS2 CVARs/commands.
+> - **Live/paused scroll toggle:** in live mode the view auto-snaps to the newest line; paused mode lets the user scroll freely through the backlog without being pulled back to the bottom.
+> - **Session tools:** `⧉ Copy session` copies the full session log to the clipboard, and `⤓ Export` downloads it as a `.txt` file.
+> - **RCON macros panel:** 8 built-in macros (warmup → live, reset score, knife round, pause match, kick bots, demo start, demo stop, fix stuck round) plus custom macro creation via the `+ New macro` form. All custom macros are persisted in `localStorage` under the key `nokit_console_macros`.
+> - **History panel:** shows the last 20 unique commands (most recent first); clicking an entry pastes it into the input. History is persisted across reloads in `localStorage` under the key `nokit_console_history`.
 
 ---
 
