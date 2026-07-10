@@ -16,7 +16,8 @@ Only a subset of the panel is implemented today; the rest exists as a demo/plann
 | Multi-server switcher | ✅ Implemented |
 | RCON Console | ✅ Implemented | Full terminal UI: timestamps, color-coded output, ↑↓ history, Ctrl+L clear, inline suggestion list autocomplete (top 8 ranked hits, prefix-highlighted, appears after first character; navigable with ↑↓, Tab/Enter to fill, Escape to dismiss, mouse click) for 5000+ CS2 CVARs/commands, RCON macros sidebar with localStorage persistence, clickable history panel, live/paused scroll toggle, Copy session & Export |
 | Dashboard | ✅ Implemented |
-| Live Logs | ✅ Implemented | Real-time server console received over UDP (`logaddress_add`) and streamed to the browser over SSE (`GET /api/logs/stream`); configurable line retention (default 500, 50–2000), auto-scroll with manual-scroll pause, Clear/Download, connection status indicator. No Docker socket required |
+| Live Logs | ✅ Implemented | Real-time server console received over UDP (`logaddress_add`) **and HTTP (`logaddress_add_http`)** and streamed to the browser over SSE (`GET /api/logs/stream`); configurable line retention (default 500, 50–2000), auto-scroll with manual-scroll pause, Clear/Download, connection status indicator. No Docker socket required |
+| HTTP Log Listener | ✅ Implemented | Public `POST /api/logs/http` endpoint accepts CS2 `logaddress_add_http` plain-text payloads and feeds them into the **same** loghub pipeline as the UDP listener — so HTTP-sourced logs appear in Live Logs and drive the same workshop-map download verification. Coexists with UDP (both run at once). Optional `CS2_LOG_HTTP_TOKEN` shared-secret guard |
 | Players | ❌ Not built (demo only / planned) |
 | Maps | ✅ Implemented | Standard map pool (12 maps), favorites system (localStorage), workshop maps fetched live via RCON (`maps *`), map cycle editor, RCON integration (changelevel, host_workshop_map) |
 | CVAR Presets | ❌ Not built (demo only / planned) |
@@ -117,6 +118,64 @@ and map-load messages appear in the log stream.
 > UDP directly from the game server, which is both simpler and more secure.
 > Make sure the CS2 server has logging enabled (`CS2_LOG=on` for the
 > `joedwards32/cs2` image) so `logaddress_add` has something to forward.
+
+### HTTP log listener (`logaddress_add_http`)
+
+Some CS2 servers/networks can't (or won't) deliver logs over UDP and instead use
+the engine's **HTTP** log delivery, `logaddress_add_http <url>`, which POSTs each
+log line as a plain-text HTTP body. The panel supports this **alongside** the UDP
+listener — both run simultaneously and feed the **same** live log pipeline, so
+HTTP-sourced lines show up in the Live Logs panel and drive the same workshop-map
+download verification (e.g. the messages emitted after `host_workshop_map <id>`).
+
+**Endpoint:** `POST /api/logs/http` on the panel (default port `8080`). It is
+public/unauthenticated by design because a game server cannot present a panel
+session cookie.
+
+**Point your CS2 server at it** from the RCON console (or the server's
+`autoexec`/config). Use the panel's address **as reachable from the CS2 server**:
+
+```
+logaddress_add_http "http://<panel-host>:8080/api/logs/http"
+log on
+```
+
+For example, on the bundled Docker network where the panel's service name is
+`defuse`:
+
+```
+logaddress_add_http "http://defuse:8080/api/logs/http"
+log on
+```
+
+You can register both transports at once — UDP and HTTP will both flow into the
+Live Logs view:
+
+```
+logaddress_add 10.0.0.5:27500
+logaddress_add_http "http://defuse:8080/api/logs/http"
+log on
+```
+
+**Auto-configuration:** set `CS2_LOG_HTTP_SINK_URL` and the panel will issue
+`logaddress_add_http <url>` over RCON on startup (retrying until the server is
+up), the same way `CS2_LOG_SINK_ADDR` drives the UDP `logaddress_add`.
+
+**Configuration:**
+
+- `CS2_LOG_HTTP_SINK_URL` — full URL of this endpoint as reachable from the CS2
+  container (e.g. `http://defuse:8080/api/logs/http`). When set, the panel
+  registers it via RCON automatically. Leave empty to run `logaddress_add_http`
+  yourself.
+- `CS2_LOG_HTTP_TOKEN` — optional shared secret. When set, the endpoint requires
+  a matching token supplied as a `?token=<secret>` query parameter or an
+  `X-Log-Token` header, so you can lock the endpoint down if it is exposed.
+  Register the URL accordingly, e.g.
+  `logaddress_add_http "http://defuse:8080/api/logs/http?token=mysecret"`.
+
+> ℹ️ Because CS2 fires log lines as fire-and-forget POSTs, the endpoint always
+> replies `200 OK` with an empty body. UDP and HTTP can be used independently or
+> together — whichever your server supports.
 
 ## License
 

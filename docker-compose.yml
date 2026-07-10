@@ -21,6 +21,14 @@ services:
       # name on the shared Docker network. The panel issues
       # `logaddress_add <addr>; log on` over RCON on startup.
       CS2_LOG_SINK_ADDR: ${CS2_LOG_SINK_ADDR:-defuse:27500}
+      # ---- Live Logs (HTTP ingestion) ----
+      # Full URL of the panel's HTTP log endpoint (`POST /api/logs/http`) as
+      # reachable from the CS2 container. When set, the panel registers it via
+      # `logaddress_add_http <url>` over RCON on startup, so servers that use
+      # CS2's HTTP log delivery feed into the same Live Logs pipeline as UDP.
+      CS2_LOG_HTTP_SINK_URL: ${CS2_LOG_HTTP_SINK_URL:-http://defuse:8080/api/logs/http}
+      # Optional shared secret guarding the HTTP log endpoint (empty = open).
+      CS2_LOG_HTTP_TOKEN: ${CS2_LOG_HTTP_TOKEN:-}
     volumes:
       - ./config.yaml:/etc/defuse/config.yaml:ro
       - nokit_data:/data

@@ -21,7 +21,8 @@ Implementation will begin with the **Dashboard**.
 | Multi-server switcher | ✅ Implemented | Add/remove servers (name, RCON host, password) via header |
 | RCON Console | ✅ Implemented | Full terminal UI: timestamps, color-coded output, ↑↓ history, Ctrl+L clear, inline suggestion list autocomplete (top 8 ranked hits, prefix-highlighted, auto-opens after first character, ↑↓/Tab/Enter/mouse selection, Escape to dismiss) for 5000+ CS2 CVARs/commands, RCON macros sidebar with localStorage persistence, clickable history panel, live/paused scroll toggle, Copy session & Export |
 | Dashboard | ✅ Implemented | Live stat cards (CPU/tick/players) with sparklines, server status, quick actions, round info, recent output — polls `status`/`stats` over RCON every 6s |
-| Live Logs | ✅ Implemented | Real-time server console ingested over **UDP** (CS2 `logaddress_add`, `internal/loghub`) and streamed over SSE (`GET /api/logs/stream`); configurable line retention (default 500, 50–2000), auto-scroll with manual-scroll pause, Clear, Download `.log`, connection status indicator. Bind port `CS2_LOG_LISTEN_PORT` (default `27500`), sink `CS2_LOG_SINK_ADDR`. No Docker socket required. |
+| Live Logs | ✅ Implemented | Real-time server console ingested over **UDP** (CS2 `logaddress_add`, `internal/loghub`) **and HTTP** (CS2 `logaddress_add_http` → `POST /api/logs/http`) and streamed over SSE (`GET /api/logs/stream`); configurable line retention (default 500, 50–2000), auto-scroll with manual-scroll pause, Clear, Download `.log`, connection status indicator. Bind port `CS2_LOG_LISTEN_PORT` (default `27500`), sink `CS2_LOG_SINK_ADDR`. No Docker socket required. |
+| HTTP Log Listener | ✅ Implemented | Public `POST /api/logs/http` endpoint accepts CS2 `logaddress_add_http` plain-text payloads (`loghub.ParseHTTPBody`) and publishes each line into the **same** `internal/loghub` hub as the UDP listener via `Hub.Publish`, so HTTP-sourced logs appear in Live Logs and drive the same workshop-map download verification. Coexists with the UDP listener (both run simultaneously). Optional `CS2_LOG_HTTP_SINK_URL` RCON auto-config and `CS2_LOG_HTTP_TOKEN` shared-secret guard (`?token=`/`X-Log-Token`). |
 | Players | ❌ Not built | Demo only / planned |
 | Maps | ✅ Implemented | Standard map pool (12 maps), favorites system (localStorage), workshop maps fetched live via RCON (`maps *` → `GET /api/servers/{id}/maps/workshop`), map cycle editor, RCON integration (changelevel, host_workshop_map) |
 | CVAR Presets | ❌ Not built | Demo only / planned |
@@ -295,6 +296,48 @@ Docker socket required:
   Docker socket mount are needed. The bundled `docker-compose.yml` runs the
   panel and a `joedwards32/cs2` server on a shared network and sets
   `CS2_LOG_SINK_ADDR=defuse:27500`.
+
+#### ✅ HTTP log listener (`logaddress_add_http`)
+
+Newer CS2 builds (and some network setups where UDP is impractical) deliver
+logs over **HTTP** using `logaddress_add_http <url>`, which POSTs each log line
+as a plain-text HTTP body. This fork supports that transport **alongside** the
+UDP listener — both run at the same time and feed the **same** in-process hub,
+so the source (UDP vs HTTP) is transparent to the rest of the panel:
+
+- **Endpoint (`internal/api/logs.go`, `LogsIngestHTTPHandler`):**
+  `POST /api/logs/http`. Registered on the **public** mux (like `/api/login`
+  and `/api/health`) because a game server cannot present a panel session
+  cookie. It reads the POST body (capped at 1 MiB), parses it with
+  `loghub.ParseHTTPBody`, and publishes each resulting line via `Hub.Publish`.
+  It always replies `200 OK` with an empty body (CS2 ignores the response).
+- **Parsing (`loghub.ParseHTTPBody`):** unlike the UDP transport, HTTP delivery
+  carries no `0xFFFFFFFF` header or `R`/`S` type byte — the body is one or more
+  log lines, each typically prefixed with the Source `L ` marker and terminated
+  by a newline. Each line is normalised with the shared `cleanLine` helper (the
+  same trimming `ParsePacket` uses), so HTTP and UDP lines render identically.
+- **Shared pipeline (`Hub.Publish`):** published lines flow through the exact
+  same fan-out (`broadcast`) as UDP lines, so they appear in the Live Logs SSE
+  stream (`GET /api/logs/stream`) and drive the **same workshop-map download
+  verification** — the messages emitted after `host_workshop_map <id>` are shown
+  and colour-coded in the live view regardless of transport. `Publish` is a
+  no-op once the hub is closed.
+- **Auto-configuration (`cmd/defuse/main.go`):** when `CS2_LOG_HTTP_SINK_URL`
+  is set, the panel appends `logaddress_add_http <url>` to the RCON startup
+  sequence (alongside the UDP `logaddress_add`), so both sinks are registered
+  automatically. Either sink (UDP, HTTP, or both) triggers auto-config.
+- **Security:** the endpoint is unauthenticated by default. Setting
+  `CS2_LOG_HTTP_TOKEN` makes it require a matching token via a `?token=<secret>`
+  query parameter or an `X-Log-Token` header; mismatches get `401`.
+- **Configuration:**
+  - `CS2_LOG_HTTP_SINK_URL` — full endpoint URL as reachable from the CS2
+    container (e.g. `http://defuse:8080/api/logs/http`). Empty ⇒ operator wires
+    `logaddress_add_http` themselves.
+  - `CS2_LOG_HTTP_TOKEN` — optional shared secret guarding the endpoint.
+- **Tests:** `TestParseHTTPBody` / `TestPublish` (loghub) and
+  `TestLogsIngestHTTPHandler` / `TestLogsIngestHTTPHandlerToken` /
+  `TestLogsIngestHTTPHandlerNilHub` (api) cover body parsing, hub fan-out, the
+  token guard, and the nil-hub path.
 
 Filter tabs, grep/regex search, and the throughput/backpressure footer from the
 demo spec above are **not yet** wired up — the current panel focuses on a
