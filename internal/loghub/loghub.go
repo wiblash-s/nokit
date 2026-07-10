@@ -75,8 +75,9 @@ func (h *Hub) Listen(port int) error {
 // readLoop reads datagrams until the socket is closed.
 func (h *Hub) readLoop(conn *net.UDPConn) {
 	buf := make([]byte, readBuffer)
+	var received, parsed uint64
 	for {
-		n, _, err := conn.ReadFromUDP(buf)
+		n, src, err := conn.ReadFromUDP(buf)
 		if err != nil {
 			h.mu.Lock()
 			closed := h.closed
@@ -88,10 +89,38 @@ func (h *Hub) readLoop(conn *net.UDPConn) {
 			h.logger.Warn("loghub udp read", "error", err)
 			continue
 		}
-		if line, ok := ParsePacket(buf[:n]); ok {
-			h.broadcast(line)
+
+		received++
+		line, ok := ParsePacket(buf[:n])
+		if ok {
+			parsed++
 		}
+
+		// Diagnostics: announce the very first datagram (proves CS2 is
+		// reaching us and from which address), and warn if a datagram
+		// arrives but cannot be parsed as a Source log packet.
+		if received == 1 {
+			h.logger.Info("loghub received first UDP datagram",
+				"from", src.String(), "bytes", n, "parsed", ok, "line", line)
+		}
+		if !ok {
+			h.logger.Warn("loghub could not parse datagram",
+				"from", src.String(), "bytes", n, "head", previewBytes(buf[:n]))
+			continue
+		}
+
+		h.broadcast(line)
 	}
+}
+
+// previewBytes returns a short, printable hex/ascii preview of a datagram head
+// for troubleshooting unparseable packets.
+func previewBytes(b []byte) string {
+	const max = 24
+	if len(b) > max {
+		b = b[:max]
+	}
+	return fmt.Sprintf("% x", b)
 }
 
 // Subscribe registers a new subscriber and returns its id plus a receive-only
