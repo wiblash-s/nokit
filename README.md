@@ -14,7 +14,7 @@ Only a subset of the panel is implemented today; the rest exists as a demo/plann
 |---------|--------|
 | Login / Auth | ✅ Implemented |
 | Multi-server switcher | ✅ Implemented |
-| RCON Console | ✅ Implemented |
+| RCON Console | ✅ Implemented | Full terminal UI: timestamps, color-coded output, ↑↓ history, Ctrl+L clear, Tab autocomplete (CS2 CVARs), RCON macros sidebar with localStorage persistence, clickable history panel, live/paused scroll toggle, Copy session & Export |
 | Dashboard | ✅ Implemented |
 | Live Logs | ❌ Not built (demo only / planned) |
 | Players | ❌ Not built (demo only / planned) |
