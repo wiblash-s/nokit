@@ -126,6 +126,34 @@ function OutputText({ text }: { text: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Autocomplete suggestion item with typed-prefix highlighted
+// ---------------------------------------------------------------------------
+
+function HighlightMatch({
+  cmd,
+  query,
+  isSelected,
+}: {
+  cmd: string
+  query: string
+  isSelected: boolean
+}) {
+  const lowerCmd = cmd.toLowerCase()
+  const lowerQ = query.toLowerCase()
+  const idx = lowerQ ? lowerCmd.indexOf(lowerQ) : -1
+  if (idx === -1 || !lowerQ) return <span>{cmd}</span>
+  return (
+    <span>
+      {cmd.slice(0, idx)}
+      <span className={isSelected ? "font-bold underline underline-offset-2" : "font-bold text-primary"}>
+        {cmd.slice(idx, idx + lowerQ.length)}
+      </span>
+      {cmd.slice(idx + lowerQ.length)}
+    </span>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -145,8 +173,10 @@ export function Console({ serverId }: { serverId: string }) {
   const [historyIdx, setHistoryIdx] = useState(-1)
 
   // autocomplete state
-  const [acOpen, setAcOpen] = useState(false)
-  const [acIdx, setAcIdx] = useState(0)
+  // acDismissed: user pressed Escape — hide list until they type again
+  const [acDismissed, setAcDismissed] = useState(false)
+  // acIdx: -1 = no item highlighted (just typed text shown in input)
+  const [acIdx, setAcIdx] = useState(-1)
 
   // new-macro form
   const [showMacroForm, setShowMacroForm] = useState(false)
@@ -189,32 +219,34 @@ export function Console({ serverId }: { serverId: string }) {
   // ---- autocomplete matches ----------------------------------------------
 
   const matches = useMemo(() => {
-    const prefix = command.trim().toLowerCase()
+    const raw = command.trimStart()
+    const prefix = raw.toLowerCase()
     if (!prefix) return []
-    // Only autocomplete the (single-token) command word.
-    if (/\s/.test(command.trimStart())) return []
-    
-    // With 5000+ commands, limit results to keep UI responsive
-    const MAX_SUGGESTIONS = 50
-    const results: string[] = []
-    
-    // Fast early exit: collect up to MAX_SUGGESTIONS matches
+    // Only autocomplete the first token (no spaces yet)
+    if (/\s/.test(raw)) return []
+
+    const MAX_SUGGESTIONS = 8
+
+    // Two buckets: prefix matches (higher priority) then contains matches
+    const prefixMatches: string[] = []
+    const containsMatches: string[] = []
+
     for (const cmd of COMMANDS) {
-      if (cmd.toLowerCase().startsWith(prefix) && cmd !== prefix) {
-        results.push(cmd)
-        if (results.length >= MAX_SUGGESTIONS) break
+      const lower = cmd.toLowerCase()
+      if (lower === prefix) continue // exact — skip (user already typed it fully)
+      if (lower.startsWith(prefix)) {
+        prefixMatches.push(cmd)
+        if (prefixMatches.length >= MAX_SUGGESTIONS) break
+      } else if (lower.includes(prefix) && prefixMatches.length + containsMatches.length < MAX_SUGGESTIONS) {
+        containsMatches.push(cmd)
       }
     }
-    
-    return results
+
+    return [...prefixMatches, ...containsMatches].slice(0, MAX_SUGGESTIONS)
   }, [command])
 
-  useEffect(() => {
-    if (matches.length === 0) {
-      setAcOpen(false)
-      setAcIdx(0)
-    }
-  }, [matches.length])
+  // acVisible: show list automatically as soon as there are matches (unless dismissed with Escape)
+  const acVisible = matches.length > 0 && !acDismissed
 
   // ---- helpers ------------------------------------------------------------
 
@@ -274,17 +306,19 @@ export function Console({ serverId }: { serverId: string }) {
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
-    if (acOpen && matches[acIdx]) {
-      // accept the highlighted suggestion instead of submitting
+    // If an item is highlighted in the suggestion list, fill it (don't submit yet)
+    if (acVisible && acIdx >= 0 && matches[acIdx]) {
       setCommand(matches[acIdx])
-      setAcOpen(false)
+      setAcDismissed(true)
+      setAcIdx(-1)
       return
     }
     const cmd = command.trim()
     if (!cmd) return
     setCommand("")
     setHistoryIdx(-1)
-    setAcOpen(false)
+    setAcDismissed(false)
+    setAcIdx(-1)
     void runCommand(cmd)
   }
 
@@ -298,42 +332,43 @@ export function Console({ serverId }: { serverId: string }) {
       return
     }
 
-    // Tab: autocomplete
+    // Tab: fill input with selected suggestion (or first if none highlighted)
     if (e.key === "Tab") {
       if (matches.length === 0) return
       e.preventDefault()
-      if (!acOpen) {
-        setAcOpen(true)
-        setAcIdx(0)
-        setCommand(matches[0])
-      } else {
-        const nextIdx = (acIdx + 1) % matches.length
-        setAcIdx(nextIdx)
-        setCommand(matches[nextIdx])
+      const selected = acIdx >= 0 ? matches[acIdx] : matches[0]
+      if (selected) {
+        setCommand(selected)
+        setAcDismissed(true)
+        setAcIdx(-1)
       }
       return
     }
 
-    // Escape dismisses autocomplete
+    // Escape: dismiss suggestion list (typing will re-open it)
     if (e.key === "Escape") {
-      if (acOpen) {
+      if (acVisible) {
         e.preventDefault()
-        setAcOpen(false)
+        setAcDismissed(true)
+        setAcIdx(-1)
       }
       return
     }
 
-    // When autocomplete open, arrows navigate suggestions
-    if (acOpen && matches.length > 0 && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+    // When suggestion list is visible, arrows navigate it (without changing the input value)
+    if (acVisible && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
       e.preventDefault()
-      const delta = e.key === "ArrowDown" ? 1 : -1
-      const nextIdx = (acIdx + delta + matches.length) % matches.length
-      setAcIdx(nextIdx)
-      setCommand(matches[nextIdx])
+      if (e.key === "ArrowDown") {
+        // -1 → 0, last → stays at last
+        setAcIdx(prev => prev === -1 ? 0 : Math.min(matches.length - 1, prev + 1))
+      } else {
+        // 0 → -1 (deselect, back to typed text), -1 stays -1
+        setAcIdx(prev => prev <= 0 ? -1 : prev - 1)
+      }
       return
     }
 
-    // ↑/↓ navigate command history (shell-style)
+    // ↑/↓ navigate command history (shell-style, only when list is not visible)
     if (e.key === "ArrowUp") {
       if (history.length === 0) return
       e.preventDefault()
@@ -417,7 +452,7 @@ export function Console({ serverId }: { serverId: string }) {
         <div>
           <h2 className="text-base font-semibold">RCON Console</h2>
           <p className="text-xs text-muted-foreground">
-            tab to autocomplete · ↑↓ history · ctrl-l clears
+            type to suggest · ↑↓ navigate · tab/enter to fill · ctrl-l clears
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -504,29 +539,49 @@ export function Console({ serverId }: { serverId: string }) {
           >
             <span className="shrink-0 pl-1 font-mono text-xs text-green-600">rcon ⟩</span>
             <div className="relative flex-1">
-              {/* autocomplete dropdown */}
-              {acOpen && matches.length > 0 && (
-                <div className="absolute bottom-full left-0 z-10 mb-1 max-h-48 w-56 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-md">
-                  {matches.map((m, i) => (
-                    <button
-                      key={m}
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault()
-                        setCommand(m)
-                        setAcOpen(false)
-                        inputRef.current?.focus()
-                      }}
-                      className={cn(
-                        "block w-full rounded px-2 py-1 text-left font-mono text-xs",
-                        i === acIdx
-                          ? "bg-primary text-primary-foreground"
-                          : "text-foreground hover:bg-muted"
-                      )}
-                    >
-                      {m}
-                    </button>
-                  ))}
+              {/* autocomplete suggestion list — appears automatically after first character */}
+              {acVisible && (
+                <div className="absolute bottom-full left-0 z-10 mb-1.5 w-80 overflow-hidden rounded-lg border border-border bg-popover shadow-lg">
+                  {/* header */}
+                  <div className="flex items-center justify-between border-b border-border/50 px-2.5 py-1">
+                    <span className="text-[10px] font-medium text-muted-foreground tracking-wide uppercase">
+                      Suggestions
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                      {matches.length} hit{matches.length !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                  {/* items */}
+                  <div className="p-1">
+                    {matches.map((m, i) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault()
+                          setCommand(m)
+                          setAcDismissed(true)
+                          setAcIdx(-1)
+                          inputRef.current?.focus()
+                        }}
+                        onMouseEnter={() => setAcIdx(i)}
+                        className={cn(
+                          "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left font-mono text-xs transition-colors",
+                          i === acIdx
+                            ? "bg-primary text-primary-foreground"
+                            : "text-foreground hover:bg-muted"
+                        )}
+                      >
+                        <HighlightMatch cmd={m} query={command.trim()} isSelected={i === acIdx} />
+                      </button>
+                    ))}
+                  </div>
+                  {/* footer hint */}
+                  <div className="border-t border-border/50 px-2.5 py-1">
+                    <span className="text-[10px] text-muted-foreground">
+                      ↑↓ navigate · tab/enter to fill · esc to close
+                    </span>
+                  </div>
                 </div>
               )}
               <Input
@@ -535,7 +590,8 @@ export function Console({ serverId }: { serverId: string }) {
                 onChange={(e) => {
                   setCommand(e.target.value)
                   setHistoryIdx(-1)
-                  if (e.target.value.trim()) setAcOpen(false)
+                  setAcIdx(-1)          // reset highlight on each keystroke
+                  setAcDismissed(false) // re-show list when user keeps typing
                 }}
                 onKeyDown={handleKeyDown}
                 placeholder="status, say, mp_restartgame…"
