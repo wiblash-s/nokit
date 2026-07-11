@@ -832,4 +832,33 @@ The public demo (`nokit.app/demo`) is a pre-authenticated single-page mock — t
 
 ---
 
+## Bug Fixes & Stability Improvements
+
+### RCON Connection Stability (2026-07-11)
+
+**Problem:** RCON connections would die during gameplay with a critical nil pointer dereference panic. The connection would close unexpectedly (due to network issues, server restarts, or CS2 timeouts), and the code would attempt to use the closed connection without proper validation, causing crashes.
+
+**Root Causes Identified:**
+1. **Nil pointer dereference** — After reconnection attempt, the code would call `client.Execute()` without checking if the client was successfully created
+2. **Race condition** — Client was retrieved with a lock but used without holding the lock, allowing another goroutine to close it in between
+3. **No reconnection backoff** — Rapid retry loops would hammer the server when connections failed repeatedly
+4. **Insufficient error context** — Errors didn't distinguish between different failure modes
+
+**Fixes Implemented** (`internal/rcon/rcon.go`):
+1. **Added nil check after reconnection** — Prevents panic by validating client exists before execute
+2. **Hold lock during execute** — Prevents race condition where client could be closed between retrieval and execution
+3. **Exponential backoff with tracking** — Added `lastFailTime` and `failCount` to connection struct; implements exponential backoff (1s → 2s → 4s → 8s → 16s → 30s max) to prevent reconnection storms
+4. **Better error messages** — More descriptive errors with context about failure mode and backoff state
+5. **Connection state reset** — Properly reset failure counters on successful reconnection
+
+**Technical Details:**
+- Backoff calculation: `baseDelay * (2^(failCount-1))` capped at 30 seconds
+- Failure tracking persists across attempts until successful connection
+- Dial timeout: 5 seconds, command deadline: 10 seconds
+- Lock held during final execute to ensure atomicity
+
+**Impact:** Eliminates crashes during network instability, server restarts, or CS2 RCON timeouts. Reduces server load by preventing rapid reconnection attempts.
+
+---
+
 _This document was compiled from observations of the nokit demo. Keep it updated as features move from ❌ (demo/planned) to ✅ (implemented)._
