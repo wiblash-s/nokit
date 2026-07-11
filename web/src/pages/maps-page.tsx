@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react"
-import { Star, RefreshCw, Grid3x3, Plus, X, GripVertical } from "lucide-react"
+import { Star, RefreshCw, Grid3x3, Plus, X, GripVertical, Trash2, Layers } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
@@ -18,12 +18,31 @@ type MapInfo = {
   thumbnail: string
 }
 
+type WorkshopSource = "instant" | "installed" | "scanned"
+
 type WorkshopMap = {
+  // Numeric Steam Workshop ID, or "" when unknown (RCON mode, map installed
+  // outside the panel). The UI shows a "no id" tag when empty.
   workshopId: string
   name: string
-  // Populated by the backend when a STEAM_API_KEY is configured; points at the
-  // panel's own cached thumbnail endpoint. Absent when thumbnails are disabled.
+  // Where this entry (and its ID, if any) came from.
+  source: WorkshopSource
+  // All workshop IDs for this map name when more than one version is installed
+  // (filesystem mode only).
+  versions?: string[]
+  // Populated by the backend when a STEAM_API_KEY is configured AND the workshop
+  // ID is known; points at the panel's own cached thumbnail endpoint.
   thumbnailUrl?: string
+}
+
+// Response of GET /api/servers/:id/maps/workshop.
+type WorkshopListResponse = {
+  // Active provider for this server: "rcon" (ds_workshop_listmaps + ID cache) or
+  // "filesystem" (scan of the mounted workshop content dir).
+  mode: "rcon" | "filesystem"
+  // True only in filesystem mode with a read-write mount — enables uninstall.
+  writable: boolean
+  maps: WorkshopMap[]
 }
 
 // ---------------------------------------------------------------------------
@@ -99,6 +118,8 @@ export function MapsPage({ serverId }: MapsPageProps) {
   const [workshopMaps, setWorkshopMaps] = useState<WorkshopMap[]>([])
   const [workshopLoading, setWorkshopLoading] = useState(false)
   const [workshopError, setWorkshopError] = useState<string | null>(null)
+  const [workshopMode, setWorkshopMode] = useState<"rcon" | "filesystem">("rcon")
+  const [workshopWritable, setWorkshopWritable] = useState(false)
 
   const fetchWorkshopMaps = async () => {
     setWorkshopLoading(true)
@@ -114,8 +135,10 @@ export function MapsPage({ serverId }: MapsPageProps) {
       if (!res.ok) {
         throw new Error(`Server returned ${res.status}`)
       }
-      const data: WorkshopMap[] = await res.json()
-      setWorkshopMaps(data)
+      const data: WorkshopListResponse = await res.json()
+      setWorkshopMaps(data.maps ?? [])
+      setWorkshopMode(data.mode ?? "rcon")
+      setWorkshopWritable(Boolean(data.writable))
     } catch (err) {
       console.error("Failed to fetch workshop maps:", err)
       if (err instanceof DOMException && err.name === "AbortError") {
@@ -179,23 +202,79 @@ export function MapsPage({ serverId }: MapsPageProps) {
     }
   }
 
+  // Download & switch to a workshop map by ID. Uses the dedicated load endpoint
+  // (rather than a raw RCON call) so the backend caches the ID and reconciles its
+  // name — enabling thumbnails and the "instant" indicator on future syncs.
   const loadWorkshopMap = async () => {
     if (!workshopId.trim()) return
     setLoading(true)
     try {
-      const res = await fetch(`/api/servers/${serverId}/rcon`, {
+      const res = await fetch(`/api/servers/${serverId}/maps/workshop/load`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command: `host_workshop_map ${workshopId}` }),
+        body: JSON.stringify({ workshopId: workshopId.trim() }),
       })
       if (res.ok) {
-        // Success feedback
+        setWorkshopId("")
+        // Give the server a moment to register the download, then refresh.
+        setTimeout(fetchWorkshopMaps, 1500)
       }
     } catch (err) {
       console.error("Failed to load workshop map:", err)
     } finally {
       setLoading(false)
-      setWorkshopId("")
+    }
+  }
+
+  // Switch to an already-installed workshop map. When the ID is known we go
+  // through the load endpoint (host_workshop_map); when only the name is known
+  // (RCON mode, installed out-of-band) we use the ds_workshop plugin's
+  // name-based changelevel.
+  const switchToWorkshopMap = async (map: WorkshopMap) => {
+    setLoading(true)
+    try {
+      if (map.workshopId) {
+        await fetch(`/api/servers/${serverId}/maps/workshop/load`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workshopId: map.workshopId }),
+        })
+      } else {
+        await fetch(`/api/servers/${serverId}/rcon`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ command: `ds_workshop_changelevel ${map.name}` }),
+        })
+      }
+    } catch (err) {
+      console.error("Failed to switch workshop map:", err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Uninstall a workshop map. Only available in filesystem mode with a writable
+  // mount; the button is hidden otherwise.
+  const uninstallWorkshopMap = async (map: WorkshopMap) => {
+    if (!map.workshopId) return
+    if (!window.confirm(`Uninstall "${map.name}" (#${map.workshopId})? This deletes it from the server.`)) {
+      return
+    }
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/servers/${serverId}/maps/workshop/${map.workshopId}`, {
+        method: "DELETE",
+      })
+      if (res.ok) {
+        fetchWorkshopMaps()
+      } else {
+        const body = await res.json().catch(() => ({}))
+        setWorkshopError(body?.error || `Uninstall failed (${res.status}).`)
+      }
+    } catch (err) {
+      console.error("Failed to uninstall workshop map:", err)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -314,9 +393,30 @@ export function MapsPage({ serverId }: MapsPageProps) {
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Workshop
           </h2>
-          <span className="text-xs text-muted-foreground">
-            {workshopMaps.length} installed
-          </span>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span
+              className={cn(
+                "rounded border px-1.5 py-0.5 font-medium",
+                workshopMode === "filesystem"
+                  ? "border-blue-500/30 bg-blue-500/10 text-blue-500"
+                  : "border-border bg-muted"
+              )}
+              title={
+                workshopMode === "filesystem"
+                  ? workshopWritable
+                    ? "Filesystem mode (read-write): exact IDs, multiple versions, uninstall enabled"
+                    : "Filesystem mode (read-only): exact IDs and versions; mount read-write to enable uninstall"
+                  : "RCON mode: names from ds_workshop_listmaps; IDs known only for maps downloaded here"
+              }
+            >
+              {workshopMode === "filesystem"
+                ? workshopWritable
+                  ? "filesystem · rw"
+                  : "filesystem · ro"
+                : "rcon"}
+            </span>
+            <span>{workshopMaps.length} installed</span>
+          </div>
         </div>
 
         <div className="mb-4 flex gap-2">
@@ -362,9 +462,10 @@ export function MapsPage({ serverId }: MapsPageProps) {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {workshopMaps.map((map) => (
               <WorkshopMapCard
-                key={map.workshopId}
+                key={map.workshopId || map.name}
                 map={map}
-                onSwitch={() => changeMap(`workshop/${map.workshopId}/${map.name}`)}
+                onSwitch={() => switchToWorkshopMap(map)}
+                onUninstall={workshopWritable ? () => uninstallWorkshopMap(map) : undefined}
                 disabled={loading}
               />
             ))}
@@ -502,17 +603,39 @@ function MapCard({
 type WorkshopMapCardProps = {
   map: WorkshopMap
   onSwitch?: () => void
+  onUninstall?: () => void
   disabled?: boolean
 }
 
-function WorkshopMapCard({ map, onSwitch, disabled }: WorkshopMapCardProps) {
+const SOURCE_BADGE: Record<WorkshopSource, { label: string; className: string; title: string }> = {
+  instant: {
+    label: "instant",
+    className: "border-green-500/30 bg-green-500/10 text-green-500",
+    title: "Installed and instantly loadable — workshop ID known, thumbnail available",
+  },
+  installed: {
+    label: "installed",
+    className: "border-border bg-muted text-muted-foreground",
+    title: "Installed on the server (reported by ds_workshop_listmaps)",
+  },
+  scanned: {
+    label: "scanned",
+    className: "border-blue-500/30 bg-blue-500/10 text-blue-500",
+    title: "Discovered by scanning the mounted workshop content directory",
+  },
+}
+
+function WorkshopMapCard({ map, onSwitch, onUninstall, disabled }: WorkshopMapCardProps) {
   const [thumbFailed, setThumbFailed] = useState(false)
   const showThumb = Boolean(map.thumbnailUrl) && !thumbFailed
+  const badge = SOURCE_BADGE[map.source] ?? SOURCE_BADGE.installed
+  const hasId = Boolean(map.workshopId)
+  const versionCount = map.versions?.length ?? 0
 
   return (
     <div className="group flex flex-col overflow-hidden rounded-lg border border-border transition-all hover:border-primary">
       {/* Steam Workshop thumbnail, with a gradient fallback while loading or if
-          Steam has no preview image / thumbnails are disabled. */}
+          Steam has no preview image / thumbnails are disabled / ID unknown. */}
       <div className="relative aspect-video w-full bg-gradient-to-br from-purple-900/20 to-blue-900/20">
         {showThumb && (
           <img
@@ -523,27 +646,68 @@ function WorkshopMapCard({ map, onSwitch, disabled }: WorkshopMapCardProps) {
             className="absolute inset-0 h-full w-full object-cover"
           />
         )}
+        {/* Source badge (top-left) */}
+        <span
+          className={cn(
+            "absolute left-2 top-2 rounded border px-1.5 py-0.5 text-[10px] font-medium backdrop-blur-sm",
+            badge.className
+          )}
+          title={badge.title}
+        >
+          {badge.label}
+        </span>
+        {/* Multi-version indicator (top-right) */}
+        {versionCount > 1 && (
+          <span
+            className="absolute right-2 top-2 flex items-center gap-1 rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-500 backdrop-blur-sm"
+            title={`${versionCount} versions installed: ${map.versions?.join(", ")}`}
+          >
+            <Layers className="h-3 w-3" />
+            {versionCount} versions
+          </span>
+        )}
       </div>
 
       <div className="flex flex-col gap-2 p-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <h3 className="truncate font-semibold" title={map.name}>
             {map.name}
           </h3>
           <Star className="h-4 w-4 shrink-0 text-muted-foreground" />
         </div>
-        <div className="font-mono text-xs text-muted-foreground">
-          #{map.workshopId}
+        {hasId ? (
+          <div className="font-mono text-xs text-muted-foreground">#{map.workshopId}</div>
+        ) : (
+          <div
+            className="inline-block self-start rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-500"
+            title="Workshop ID unknown — installed outside the panel. Download it here once to enable its thumbnail."
+          >
+            no id
+          </div>
+        )}
+        <div className="mt-1 flex gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="flex-1 text-xs"
+            onClick={onSwitch}
+            disabled={disabled}
+          >
+            Switch to map
+          </Button>
+          {onUninstall && hasId && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs text-destructive hover:bg-destructive/10"
+              onClick={onUninstall}
+              disabled={disabled}
+              title="Uninstall (delete from server)"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          className="mt-1 w-full text-xs"
-          onClick={onSwitch}
-          disabled={disabled}
-        >
-          Switch to map
-        </Button>
       </div>
     </div>
   )
