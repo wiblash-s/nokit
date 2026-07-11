@@ -19,7 +19,7 @@ Only a subset of the panel is implemented today; the rest exists as a demo/plann
 | Live Logs | ✅ Implemented | Real-time server console received over UDP (`logaddress_add`) **and HTTP (`logaddress_add_http`)** and streamed to the browser over SSE (`GET /api/logs/stream`); configurable line retention (default 500, 50–2000), auto-scroll with manual-scroll pause, Clear/Download, connection status indicator. No Docker socket required |
 | HTTP Log Listener | ✅ Implemented | Public `POST /api/logs/http` endpoint accepts CS2 `logaddress_add_http` plain-text payloads and feeds them into the **same** loghub pipeline as the UDP listener — so HTTP-sourced logs appear in Live Logs and drive the same workshop-map download verification. Coexists with UDP (both run at once). Optional `CS2_LOG_HTTP_TOKEN` shared-secret guard |
 | Players | ❌ Not built (demo only / planned) |
-| Maps | ✅ Implemented | Standard map pool (12 maps), favorites system (localStorage), workshop maps fetched live via RCON (`maps *`), **workshop map thumbnails via the Steam Web API** (cached on disk, served from `GET /api/maps/thumbnail/{id}`; enable with `STEAM_API_KEY`), map cycle editor, RCON integration (changelevel, host_workshop_map) |
+| Maps | ✅ Implemented | Standard map pool (12 maps), favorites system (localStorage), **two-mode workshop map management** — Mode A (default) lists installed maps via RCON `ds_workshop_listmaps` with workshop IDs cached in the DB for maps loaded through the panel; Mode B (opt-in) scans a mounted filesystem volume for exact ID↔name mapping incl. multiple versions and runtime-probed uninstall support — **workshop map thumbnails via the Steam Web API** (cached on disk, served from `GET /api/maps/thumbnail/{id}`; enable with `STEAM_API_KEY`), map cycle editor, RCON integration (changelevel, host_workshop_map) |
 | CVAR Presets | ❌ Not built (demo only / planned) |
 | Config Editor | ✅ Implemented | File browser tree view, code editor with line numbers, unsaved changes tracking, save/reload/exec via RCON, support for .cfg and .json files |
 | Plugins | ❌ Not built (demo only / planned) |
@@ -84,6 +84,60 @@ preview for a given item — the UI falls back to the gradient placeholder.
 > `STEAM_API_KEY` is **not** the same as `STEAM_GSLT`. GSLT makes the CS2 game
 > server public; the API key is used only by the panel to fetch workshop
 > metadata and thumbnails.
+
+## Workshop maps (two modes)
+
+The **Maps** page lists installed workshop maps using one of two modes,
+selected **per server at runtime**. You don't declare the mode anywhere — the
+panel picks Mode B automatically when a workshop volume is mounted for that
+server, otherwise it falls back to Mode A.
+
+### Mode A — RCON + DB cache (default, works everywhere)
+
+Installed maps are listed by running `ds_workshop_listmaps` over RCON (falling
+back to `maps *` on servers without that command). This returns bare map
+**names** only (e.g. `de_drachenschanze`), with no workshop IDs.
+
+- Workshop IDs are known **only** for maps that were downloaded through the
+  panel. When you load a map with `host_workshop_map <id>`, the panel records
+  the `id → name` mapping in its SQLite DB (`workshop_maps` table) after
+  confirming the loaded map name from `status`.
+- Maps with a known ID get a **thumbnail** and an **`instant`** badge (they can
+  be switched to instantly by ID).
+- Maps with no cached ID show a clean card with a **`no id`** tag and no
+  thumbnail; they're switched by name via `ds_workshop_changelevel <name>`.
+- Because only names are returned, Mode A **cannot disambiguate** multiple
+  installed versions that share the same map name.
+
+Mode A needs **no extra configuration** — it's the default for every server.
+
+### Mode B — Filesystem scan (opt-in, exact IDs + uninstall)
+
+If you mount CS2's workshop content directory into the panel container, the
+panel scans it directly and gets an **exact ID ↔ name mapping** — including
+multiple versions of the same map name — without relying on the DB cache.
+
+Mount convention (namespaced by server ID):
+
+```yaml
+# docker-compose.yml — under the defuse service `volumes:`
+# Mount your server's steamapps/workshop/content/730 at /workshop/<serverId>.
+# <serverId> is the slug shown in the panel URL (e.g. "katzenstube").
+- /path/to/cs2/steamapps/workshop/content/730:/workshop/katzenstube:ro
+```
+
+- The base directory defaults to `/workshop` and is overridable with the
+  `WORKSHOP_BASE` env var. A single server can also be pointed at an arbitrary
+  path with `WORKSHOP_PATH_<UPPER_ID>` (server ID uppercased, hyphens →
+  underscores — same convention as `RCON_PASSWORD_<UPPER_ID>`).
+- Each numeric subfolder (`<workshopId>/` containing a `.vpk`) is one installed item, so the
+  panel reports the exact workshop ID for every map and groups multiple
+  versions under one card. Cards carry a **`scanned`** source badge.
+- **Uninstall** is offered only in Mode B, and only when the mount is
+  **writable**. Writability is **auto-detected at runtime** by a write-probe
+  (the panel creates and deletes a temp file in the mount) — it is *not* a
+  config flag. Mount the volume read-only (`:ro`) to keep uninstall disabled;
+  mount it read-write to enable deleting a map's `<id>` folder from the panel.
 
 ## Live Logs
 

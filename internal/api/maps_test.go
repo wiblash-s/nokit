@@ -8,35 +8,8 @@ import (
         "github.com/codevski/defuse/internal/steam"
 )
 
-func TestParseWorkshopMaps(t *testing.T) {
-        out := `
-de_dust2
-workshop/3070900859/de_cache_redux
-workshop/3070900859/de_cache_redux
-workshop\1234567890\aim_map.vpk
-garbage line
-`
-        maps := parseWorkshopMaps(out)
-        if len(maps) != 2 {
-                t.Fatalf("got %d maps, want 2: %+v", len(maps), maps)
-        }
-        if maps[0].WorkshopID != "3070900859" || maps[0].Name != "de_cache_redux" {
-                t.Errorf("unexpected first map: %+v", maps[0])
-        }
-        if maps[1].WorkshopID != "1234567890" || maps[1].Name != "aim_map" {
-                t.Errorf("unexpected second map (want .vpk stripped): %+v", maps[1])
-        }
-}
-
-func TestParseWorkshopMaps_Empty(t *testing.T) {
-        maps := parseWorkshopMaps("no workshop maps here")
-        if maps == nil {
-                t.Fatal("expected non-nil empty slice for JSON encoding")
-        }
-        if len(maps) != 0 {
-                t.Errorf("expected 0 maps, got %d", len(maps))
-        }
-}
+// storeMapCache assertion lives in the store package tests; here we only verify
+// the HTTP handlers. Map-list parsing is tested in internal/workshop.
 
 func TestThumbnailHandler_DisabledReturns404(t *testing.T) {
         logger := newTestLogger()
