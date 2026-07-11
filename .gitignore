@@ -13,3 +13,7 @@ assets/dist/*
 config.yml
 *.fish
 *.db
+
+# Cached Steam Workshop map thumbnails (downloaded at runtime)
+/thumbnails/
+thumbnails/

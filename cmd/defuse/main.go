@@ -18,6 +18,7 @@ import (
         "github.com/codevski/defuse/internal/loghub"
         "github.com/codevski/defuse/internal/rcon"
         "github.com/codevski/defuse/internal/server"
+        "github.com/codevski/defuse/internal/steam"
         "github.com/codevski/defuse/internal/store"
 )
 
@@ -195,7 +196,22 @@ func main() {
                 addr = ":8080"
         }
 
-        srv := server.New(logger, dist, st, mgr, hub, creds)
+        // Steam Workshop thumbnails. When STEAM_API_KEY is set the panel resolves
+        // and caches map preview images from the Steam Web API; otherwise the client
+        // is disabled and the UI falls back to placeholder gradients.
+        steamKey := strings.TrimSpace(os.Getenv("STEAM_API_KEY"))
+        thumbCacheDir := strings.TrimSpace(os.Getenv("THUMBNAIL_CACHE_DIR"))
+        if thumbCacheDir == "" {
+                thumbCacheDir = "thumbnails"
+        }
+        steamClient := steam.New(steamKey, thumbCacheDir, logger)
+        if steamClient.Enabled() {
+                logger.Info("steam workshop thumbnails enabled", "cache_dir", thumbCacheDir)
+        } else {
+                logger.Info("steam workshop thumbnails disabled (set STEAM_API_KEY to enable)")
+        }
+
+        srv := server.New(logger, dist, st, mgr, hub, steamClient, creds)
         httpSrv := &http.Server{
                 Addr:    addr,
                 Handler: srv.Handler(),

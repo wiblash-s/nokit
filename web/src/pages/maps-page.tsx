@@ -21,6 +21,9 @@ type MapInfo = {
 type WorkshopMap = {
   workshopId: string
   name: string
+  // Populated by the backend when a STEAM_API_KEY is configured; points at the
+  // panel's own cached thumbnail endpoint. Absent when thumbnails are disabled.
+  thumbnailUrl?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -492,10 +495,24 @@ type WorkshopMapCardProps = {
 }
 
 function WorkshopMapCard({ map, onSwitch, disabled }: WorkshopMapCardProps) {
+  const [thumbFailed, setThumbFailed] = useState(false)
+  const showThumb = Boolean(map.thumbnailUrl) && !thumbFailed
+
   return (
     <div className="group flex flex-col overflow-hidden rounded-lg border border-border transition-all hover:border-primary">
-      {/* Thumbnail placeholder */}
-      <div className="aspect-video w-full bg-gradient-to-br from-purple-900/20 to-blue-900/20" />
+      {/* Steam Workshop thumbnail, with a gradient fallback while loading or if
+          Steam has no preview image / thumbnails are disabled. */}
+      <div className="relative aspect-video w-full bg-gradient-to-br from-purple-900/20 to-blue-900/20">
+        {showThumb && (
+          <img
+            src={map.thumbnailUrl}
+            alt={map.name}
+            loading="lazy"
+            onError={() => setThumbFailed(true)}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        )}
+      </div>
 
       <div className="flex flex-col gap-2 p-3">
         <div className="flex items-center justify-between">
