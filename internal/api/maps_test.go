@@ -39,7 +39,8 @@ func TestParseWorkshopMaps_Empty(t *testing.T) {
 }
 
 func TestThumbnailHandler_DisabledReturns404(t *testing.T) {
-        h := Wrap(newTestLogger(), ThumbnailHandler(steam.New("", t.TempDir(), nil)))
+        logger := newTestLogger()
+        h := Wrap(logger, ThumbnailHandler(steam.New("", t.TempDir(), nil), logger))
 
         req := httptest.NewRequest(http.MethodGet, "/api/maps/thumbnail/123", nil)
         req.SetPathValue("id", "123")
@@ -76,7 +77,8 @@ func TestThumbnailHandler_ServesCachedImage(t *testing.T) {
         defer steam.SetAPIBase(srv.URL)()
 
         client := steam.New("key", t.TempDir(), nil)
-        h := Wrap(newTestLogger(), ThumbnailHandler(client))
+        logger := newTestLogger()
+        h := Wrap(logger, ThumbnailHandler(client, logger))
 
         req := httptest.NewRequest(http.MethodGet, "/api/maps/thumbnail/3070900859", nil)
         req.SetPathValue("id", "3070900859")

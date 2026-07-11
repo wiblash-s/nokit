@@ -132,10 +132,15 @@ func (c *Client) ThumbnailPath(ctx context.Context, id string) (string, error) {
                 return "", fmt.Errorf("steam: invalid workshop id %q", id)
         }
 
+        c.logger.Debug("thumbnail request", "workshop_id", id)
+
         path := c.cachePath(id)
         if c.cached(id) {
+                c.logger.Debug("thumbnail cache hit", "workshop_id", id, "path", path)
                 return path, nil
         }
+
+        c.logger.Info("thumbnail cache miss, fetching from Steam", "workshop_id", id)
 
         mu := c.lockFor(id)
         mu.Lock()
@@ -143,42 +148,53 @@ func (c *Client) ThumbnailPath(ctx context.Context, id string) (string, error) {
 
         // Another goroutine may have populated the cache while we waited.
         if c.cached(id) {
+                c.logger.Debug("thumbnail cache hit after lock (concurrent fetch)", "workshop_id", id)
                 return path, nil
         }
 
         previewURL, err := c.previewURL(ctx, id)
         if err != nil {
+                c.logger.Error("failed to get preview URL from Steam", "workshop_id", id, "error", err)
                 return "", err
         }
         if previewURL == "" {
+                c.logger.Warn("Steam has no preview image for workshop item", "workshop_id", id)
                 return "", fmt.Errorf("steam: no preview image for workshop id %s", id)
         }
 
+        c.logger.Info("downloading thumbnail", "workshop_id", id, "preview_url", previewURL)
         if err := c.download(ctx, previewURL, path); err != nil {
+                c.logger.Error("thumbnail download failed", "workshop_id", id, "error", err)
                 return "", err
         }
-        c.logger.Info("cached workshop thumbnail", "workshop_id", id)
+        c.logger.Info("thumbnail cached successfully", "workshop_id", id, "path", path)
         return path, nil
 }
 
 // Prefetch downloads thumbnails for the given workshop IDs in the background,
 // coalescing with any in-flight requests. It returns immediately; failures are
-// logged at debug level and otherwise ignored. This lets the panel warm the
-// cache as soon as it learns which maps are installed, so the UI renders real
-// thumbnails without waiting on Steam.
+// logged and otherwise ignored. This lets the panel warm the cache as soon as it
+// learns which maps are installed, so the UI renders real thumbnails without
+// waiting on Steam.
 func (c *Client) Prefetch(ids []string) {
         if !c.Enabled() || len(ids) == 0 {
                 return
         }
+        c.logger.Info("prefetching thumbnails in background", "count", len(ids), "workshop_ids", ids)
         for _, id := range ids {
-                if !validID.MatchString(id) || c.cached(id) {
+                if !validID.MatchString(id) {
+                        c.logger.Warn("skipping invalid workshop ID in prefetch", "workshop_id", id)
+                        continue
+                }
+                if c.cached(id) {
+                        c.logger.Debug("skipping prefetch for already-cached thumbnail", "workshop_id", id)
                         continue
                 }
                 go func(id string) {
                         ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
                         defer cancel()
                         if _, err := c.ThumbnailPath(ctx, id); err != nil {
-                                c.logger.Debug("thumbnail prefetch failed", "workshop_id", id, "error", err)
+                                c.logger.Warn("thumbnail prefetch failed", "workshop_id", id, "error", err)
                         }
                 }(id)
         }
