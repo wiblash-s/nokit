@@ -115,6 +115,38 @@ func ThumbnailHandler(steamClient *steam.Client, logger *slog.Logger) Handler {
         }
 }
 
+// ThumbnailHandler serves a Steam Workshop map preview image for the workshop ID
+// in the URL path. Images are cached on disk after the first request, so this
+// hits the Steam API at most once per item.
+//
+// Responses are marked cacheable by the browser to avoid re-requesting images
+// that rarely change. If the Steam client is disabled or the item has no preview
+// image, an appropriate error status is returned and the UI falls back to a
+// placeholder gradient.
+func ThumbnailHandler(steamClient *steam.Client) Handler {
+	return func(w http.ResponseWriter, r *http.Request) error {
+		if !steamClient.Enabled() {
+			return NotFound("thumbnails unavailable: STEAM_API_KEY not configured")
+		}
+
+		id := r.PathValue("id")
+		if id == "" {
+			return BadRequest("missing workshop id")
+		}
+
+		path, err := steamClient.ThumbnailPath(r.Context(), id)
+		if err != nil {
+			// Not found is the friendliest signal for the UI's onError fallback,
+			// whether the item lacks a preview or the ID was malformed.
+			return WrapHTTP(err, http.StatusNotFound, "thumbnail unavailable")
+		}
+
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		http.ServeFile(w, r, path)
+		return nil
+	}
+}
+
 // workshopPathRe matches the "workshop/<id>/<mapname>" pattern that appears in
 // the output of CS2's "maps *" RCON command.
 var workshopPathRe = regexp.MustCompile(`workshop[/\\](\d+)[/\\](\S+)`)
