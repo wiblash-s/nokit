@@ -20,6 +20,7 @@ import (
         "github.com/codevski/defuse/internal/server"
         "github.com/codevski/defuse/internal/steam"
         "github.com/codevski/defuse/internal/store"
+        "github.com/codevski/defuse/internal/workshop"
 )
 
 // defaultLogPort is the UDP port the log hub binds to receive CS2 logs when
@@ -210,6 +211,12 @@ func main() {
         } else {
                 logger.Info("steam workshop thumbnails disabled (set STEAM_API_KEY to enable)")
         }
+
+        // Workshop maps: each server uses filesystem mode when its CS2 workshop
+        // content dir is mounted at <WORKSHOP_BASE>/<serverID> (or WORKSHOP_PATH_<ID>),
+        // otherwise RCON mode (ds_workshop_listmaps + download-ID cache).
+        logger.Info("workshop map discovery ready", "base_dir", workshop.BaseDir(),
+                "hint", "mount a server's steamapps/workshop/content/730 at <base>/<serverId> to enable filesystem mode (exact IDs, multi-version, uninstall)")
 
         srv := server.New(logger, dist, st, mgr, hub, steamClient, creds)
         httpSrv := &http.Server{
