@@ -1,0 +1,80 @@
+services:
+  defuse:
+    image: ghcr.io/wiblash-s/nokit:latest
+    container_name: defuse
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      # UDP log sink: CS2 sends its logs here via `logaddress_add`.
+      - "27500:27500/udp"
+    environment:
+      PANEL_PASSWORD: ${PANEL_PASSWORD}
+      RCON_PASSWORD: ${RCON_PASSWORD}
+      CONFIG_PATH: /etc/defuse/config.yaml
+      DB_PATH: /data/nokit.db
+      # ---- Live Logs (UDP ingestion) ----
+      CS2_LOG_LISTEN_PORT: ${CS2_LOG_LISTEN_PORT:-27500}
+      CS2_LOG_SINK_ADDR: ${CS2_LOG_SINK_ADDR:-defuse:27500}
+      # ---- Live Logs (HTTP ingestion) ----
+      CS2_LOG_HTTP_SINK_URL: ${CS2_LOG_HTTP_SINK_URL:-http://defuse:8080/api/logs/http}
+      CS2_LOG_HTTP_TOKEN: ${CS2_LOG_HTTP_TOKEN:-}
+      # ---- Workshop maps: Mode B (filesystem scan) ----
+      # Base directory for per-server workshop mounts. Default: /workshop
+      WORKSHOP_BASE: /workshop
+      # Optional: override the path for a specific server (uppercase ID, hyphens→underscores)
+      # WORKSHOP_PATH_KATZENSTUBE: /custom/path/to/workshop
+    volumes:
+      - ./config.yaml:/etc/defuse/config.yaml:ro
+      - nokit_data:/data
+      # ---- Workshop maps: Mode B mount example for "katzenstube" server ----
+      # Mount your CS2 server's workshop content directory at /workshop/<serverId>
+      # The <serverId> is the slug shown in the panel URL (e.g., "katzenstube")
+      # 
+      # Mount read-only (:ro) to disable uninstall, or read-write to enable it
+      # (writability is auto-detected via runtime write-probe)
+      #
+      # If using the bundled cs2 service below:
+      - cs2_data/steamapps/workshop/content/730:/workshop/katzenstube:ro
+      #
+      # If CS2 runs on the host or another container, use the absolute path:
+      # - /var/lib/cs2-server/steamapps/workshop/content/730:/workshop/katzenstube:ro
+      #
+      # For multiple servers, add one mount per server:
+      # - /path/to/server1/steamapps/workshop/content/730:/workshop/server1:ro
+      # - /path/to/server2/steamapps/workshop/content/730:/workshop/server2:rw
+    networks:
+      - cs2net
+
+  # Example CS2 dedicated server (joedwards32/cs2). Remove this block if you
+  # run your CS2 server elsewhere — just point CS2_LOG_SINK_ADDR at the panel.
+  cs2:
+    image: joedwards32/cs2
+    container_name: cs2
+    restart: unless-stopped
+    ports:
+      - "27015:27015/tcp"
+      - "27015:27015/udp"
+    environment:
+      STEAMAPPVALIDATE: 0
+      CS2_SERVERNAME: "katzenstube"
+      CS2_RCON_PORT: 27015
+      CS2_RCONPW: ${RCON_PASSWORD}
+      CS2_PW: ""
+      CS2_PORT: 27015
+      CS2_GAMEALIAS: competitive
+      SRCDS_TOKEN: ${STEAM_GSLT}
+      # Enable logging so `logaddress_add` (set by the panel over RCON) works.
+      CS2_LOG: "on"
+      CS2_LOG_DETAIL: 3
+    volumes:
+      - cs2_data:/home/steam/cs2-dedicated/
+    networks:
+      - cs2net
+
+networks:
+  cs2net:
+    driver: bridge
+
+volumes:
+  nokit_data:
+  cs2_data:
