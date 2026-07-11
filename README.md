@@ -251,6 +251,61 @@ up), the same way `CS2_LOG_SINK_ADDR` drives the UDP `logaddress_add`.
 > replies `200 OK` with an empty body. UDP and HTTP can be used independently or
 > together — whichever your server supports.
 
+## Config Management
+
+The **Config Editor** page (sidebar → *Config Editor*) manages your CS2 server's
+`.cfg` files. Like workshop maps, it operates in one of **two modes**, selected
+**per server at runtime** — you don't declare the mode anywhere. The panel picks
+**mounted volume** mode automatically when a config directory is mounted for that
+server, otherwise it falls back to **panel** mode. The editor UI shows the active
+mode and whether the mount is writable.
+
+### Mode 1 — Mounted volume (direct filesystem read/write)
+
+If you mount the CS2 server's `cfg` directory into the panel container, the panel
+reads and writes `.cfg` files **directly on the CS2 server's filesystem**. Config
+changes take effect the moment the game server re-reads the file (or you `exec`
+it).
+
+Mount convention (namespaced by server ID):
+
+```yaml
+# docker-compose.yml — under the defuse service `volumes:`
+# Mount your server's game/csgo/cfg directory at /configs/<serverId>.
+# <serverId> is the slug shown in the panel URL (e.g. "katzenstube").
+- /path/to/cs2-server/game/csgo/cfg:/configs/katzenstube:rw
+```
+
+- The base directory defaults to `/configs` and is overridable with the
+  **`CONFIG_BASE`** environment variable — point it at any path where you mount
+  per-server config directories (`<CONFIG_BASE>/<serverId>`).
+- **Writability is auto-detected at runtime** by a write-probe (the panel creates
+  and deletes a temp file in the mount) — it is *not* a config flag. Mount the
+  volume read-only (`:ro`) to keep the editor read-only; mount it read-write
+  (`:rw`) to allow saving and deleting files from the panel.
+- **Exec behavior:** running *exec via RCON* sends a single `exec <filename>`
+  command over RCON, so the CS2 server loads the file straight from disk.
+
+### Mode 2 — Panel fallback (SQLite-backed storage)
+
+When no config directory is mounted for a server, the panel falls back to storing
+configs in its own **SQLite database** (`panel_configs` table). This lets you
+author and keep configs in the panel even without filesystem access to the game
+server.
+
+- Configs are created, edited, and deleted entirely within the panel's DB.
+- **Exec behavior:** because there's no file on the server to `exec`, running
+  *Send Commands via RCON* parses the config content and sends **each non-empty,
+  non-comment line as an individual RCON command**, applying the settings live.
+
+### Editor
+
+Both modes use a **CodeMirror 6** editor with **CS2 `.cfg` syntax highlighting**
+(comments, commands/cvars, quoted strings, numbers) and **cvar autocomplete** for
+common CS2 console variables and commands. The toolbar offers *Reload from disk*,
+*exec via RCON* (or *Send Commands via RCON* in panel mode), and *Save & apply*,
+with an amber `unsaved` badge tracking dirty state.
+
 ## License
 
 MIT

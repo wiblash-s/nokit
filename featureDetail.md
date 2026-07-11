@@ -558,18 +558,19 @@ Syntax-highlighted `.cfg` content with line numbers. Comments in green (`// …`
 
 > **Quirk:** in the demo the editor content is static — selecting another file in the tree does not swap the shown buffer. In the real implementation, selecting a file loads its buffer; the `unsaved` badge indicates dirty state; `Save & apply` writes to disk and can `exec via rcon`.
 
-> **✅ Current implementation status (this fork):** The Config Editor is fully built as a functional page. The component lives in `web/src/pages/config-editor-page.tsx` (exported as `ConfigEditorPage`) and is rendered from the `/servers/:id/config` route in `App.tsx`.
-> - **File browser tree**: Left sidebar (256px) with hierarchical tree view of config files. Mock data includes 7 files + 3 folders (gamemodes, matchzy, cs_sharp) with expand/collapse functionality. Each file shows "last modified" timestamp.
-> - **Code editor**: Full-width textarea with line numbers, monospace font, dark theme (bg-zinc-950). Supports multi-line editing with proper line height (1.5rem).
-> - **Unsaved changes tracking**: Compares current content with original content; shows amber "unsaved" badge when dirty. "Reload from disk" button resets to original content.
-> - **File operations**: 
->   - **Save & apply**: Saves file to server filesystem (TODO: backend integration)
->   - **Reload from disk**: Discards changes and reloads original content
->   - **exec via rcon**: Executes the file via RCON `exec <filename>` command
-> - **Header breadcrumb**: Shows full path `/home/cs2/server/csgo{selectedPath}`
-> - **Footer status**: Displays encoding (utf-8), line endings (LF), line count, and last edit metadata
-> - **File selection**: Click any file in tree to load its content (currently shows demo content for all files)
-> - **TODO**: Real file loading from server, syntax highlighting for .cfg/.json, create new file functionality, backend integration for saving files to server filesystem
+## Config Management — ✅ Implemented
+
+> **✅ Current implementation status (this fork):** The Config Editor is fully built and backed by a real config-management subsystem. It operates in **two runtime-selected modes** (mounted volume / panel fallback), mirroring the workshop-map two-mode design. The frontend lives in `web/src/pages/config-editor-page.tsx` (exported as `ConfigEditorPage`, rendered from `/servers/:id/config` in `App.tsx`); the backend is `internal/configs/` (`Manager`, `ConfigStore`), `internal/store/configs.go` (SQLite `panel_configs` table), and `internal/api/configs.go` (REST endpoints).
+
+- **Mounted volume mode** — When the CS2 server's `cfg` directory is mounted into the panel container, the panel reads and writes `.cfg` files **directly from/to the CS2 server filesystem**. CRUD operations (list/get/save/delete) act on real files on disk.
+- **Panel fallback mode** — When no config directory is mounted, the panel stores configs in its own **SQLite database** (`panel_configs` table, backed by `internal/store/configs.go`). Configs are authored, edited, and deleted entirely within the panel's DB with no filesystem access to the game server.
+- **CodeMirror 6 editor** — The editor (`web/src/components/cfg-editor.tsx`) uses CodeMirror 6 with **CS2 `.cfg` syntax highlighting** (comments, commands/cvars, quoted strings, numbers via `web/src/lib/cs2-cfg-language.ts`) and **cvar autocomplete** for common CS2 console variables and commands.
+- **Exec in mounted mode** — Running *exec via RCON* sends a single **`exec <filename>`** command over RCON, so the CS2 server loads the file straight from disk.
+- **Exec in panel mode** — Since there's no file on the server to `exec`, *Send Commands via RCON* parses the config content and sends **each non-empty, non-comment line as an individual RCON command**, applying the settings live.
+- **`CONFIG_BASE` environment variable** — Overrides the default `/configs` base directory the panel scans for per-server config mounts (`<CONFIG_BASE>/<serverId>`), allowing a custom mount path.
+- **Auto-detection of writable mounts** — Whether a mounted config directory is writable is **auto-detected at runtime** via a write-probe (the panel creates and deletes a temp file in the mount) — it is *not* a config flag. A read-only (`:ro`) mount keeps the editor read-only; a read-write (`:rw`) mount enables saving and deleting files. The editor UI surfaces the active mode and writability.
+
+The demo reference for the page (file-browser tree, breadcrumb, footer status strip) is described below; the implemented editor keeps the same UX shell — file browser sidebar, unsaved-changes badge, Reload/exec/Save toolbar — while swapping the mock buffer for real mode-aware loading and persistence.
 
 ---
 
