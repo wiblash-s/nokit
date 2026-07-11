@@ -4,151 +4,172 @@
 package rcon
 
 import (
-	"errors"
-	"fmt"
-	"log/slog"
-	"sync"
-	"time"
+        "errors"
+        "fmt"
+        "log/slog"
+        "sync"
+        "time"
 
-	"github.com/gorcon/rcon"
+        "github.com/gorcon/rcon"
 )
 
 type Client interface {
-	Execute(command string) (string, error)
-	Close() error
+        Execute(command string) (string, error)
+        Close() error
 }
 
 var ErrNotConnected = errors.New("rcon: not connected")
 
 type connection struct {
-	id       string
-	host     string
-	password string
+        id       string
+        host     string
+        password string
 
-	mu     sync.Mutex
-	client Client
+        mu     sync.Mutex
+        client Client
 }
 
 type Manager struct {
-	logger *slog.Logger
+        logger *slog.Logger
 
-	mu          sync.RWMutex
-	connections map[string]*connection
+        mu          sync.RWMutex
+        connections map[string]*connection
 }
 
 func New(logger *slog.Logger) *Manager {
-	return &Manager{
-		logger:      logger,
-		connections: make(map[string]*connection),
-	}
+        return &Manager{
+                logger:      logger,
+                connections: make(map[string]*connection),
+        }
 }
 
 func (m *Manager) Connect(serverID, host, password string) error {
-	conn := &connection{
-		id:       serverID,
-		host:     host,
-		password: password,
-	}
-	m.mu.Lock()
-	m.connections[serverID] = conn
-	m.mu.Unlock()
-	if err := m.dial(conn); err != nil {
-		m.logger.Warn("rcon initial connect failed",
-			"server", serverID,
-			"host", host,
-			"error", err,
-		)
-		return err
-	}
-	return nil
+        conn := &connection{
+                id:       serverID,
+                host:     host,
+                password: password,
+        }
+        m.mu.Lock()
+        m.connections[serverID] = conn
+        m.mu.Unlock()
+        if err := m.dial(conn); err != nil {
+                m.logger.Warn("rcon initial connect failed",
+                        "server", serverID,
+                        "host", host,
+                        "error", err,
+                )
+                return err
+        }
+        return nil
 }
 
 func (m *Manager) dial(conn *connection) error {
-	c, err := rcon.Dial(conn.host, conn.password,
-		rcon.SetDialTimeout(5*time.Second),
-		rcon.SetDeadline(10*time.Second),
-	)
-	if err != nil {
-		return fmt.Errorf("rcon dial %s: %w", conn.host, err)
-	}
+        c, err := rcon.Dial(conn.host, conn.password,
+                rcon.SetDialTimeout(5*time.Second),
+                rcon.SetDeadline(10*time.Second),
+        )
+        if err != nil {
+                return fmt.Errorf("rcon dial %s: %w", conn.host, err)
+        }
 
-	conn.mu.Lock()
-	if conn.client != nil {
-		_ = conn.client.Close()
-	}
-	conn.client = c
-	conn.mu.Unlock()
+        conn.mu.Lock()
+        if conn.client != nil {
+                _ = conn.client.Close()
+        }
+        conn.client = c
+        conn.mu.Unlock()
 
-	m.logger.Info("rcon connected", "server", conn.id, "host", conn.host)
-	return nil
+        m.logger.Info("rcon connected", "server", conn.id, "host", conn.host)
+        return nil
 }
 
 func (m *Manager) Execute(serverID, command string) (string, error) {
-	m.mu.RLock()
-	conn, ok := m.connections[serverID]
-	m.mu.RUnlock()
-	if !ok {
-		return "", fmt.Errorf("rcon: unknown server %q", serverID)
-	}
+        m.mu.RLock()
+        conn, ok := m.connections[serverID]
+        m.mu.RUnlock()
+        if !ok {
+                return "", fmt.Errorf("rcon: unknown server %q", serverID)
+        }
 
-	conn.mu.Lock()
-	client := conn.client
-	conn.mu.Unlock()
+        conn.mu.Lock()
+        client := conn.client
+        conn.mu.Unlock()
 
-	if client != nil {
-		out, err := client.Execute(command)
-		if err == nil {
-			return out, nil
-		}
-		m.logger.Warn("rcon execute failed, retrying",
-			"server", serverID,
-			"error", err,
-		)
-		conn.mu.Lock()
-		_ = conn.client.Close()
-		conn.client = nil
-		conn.mu.Unlock()
-	}
+        if client != nil {
+                out, err := client.Execute(command)
+                if err == nil {
+                        return out, nil
+                }
+                m.logger.Warn("rcon execute failed, retrying",
+                        "server", serverID,
+                        "error", err,
+                )
+                conn.mu.Lock()
+                _ = conn.client.Close()
+                conn.client = nil
+                conn.mu.Unlock()
+        }
 
-	if err := m.dial(conn); err != nil {
-		return "", fmt.Errorf("%w: %v", ErrNotConnected, err)
-	}
+        if err := m.dial(conn); err != nil {
+                return "", fmt.Errorf("%w: %v", ErrNotConnected, err)
+        }
 
-	conn.mu.Lock()
-	client = conn.client
-	conn.mu.Unlock()
+        conn.mu.Lock()
+        client = conn.client
+        conn.mu.Unlock()
 
-	return client.Execute(command)
+        return client.Execute(command)
+}
+
+// ExecuteMulti runs a command that may produce a large, multi-packet response
+// (such as CS2's "maps *") and returns the full, reassembled output.
+//
+// It uses a dedicated short-lived TCP connection rather than the pooled gorcon
+// client, because gorcon only reads the first response packet — which truncates
+// large outputs and desyncs the pooled connection for subsequent commands.
+func (m *Manager) ExecuteMulti(serverID, command string) (string, error) {
+        m.mu.RLock()
+        conn, ok := m.connections[serverID]
+        m.mu.RUnlock()
+        if !ok {
+                return "", fmt.Errorf("rcon: unknown server %q", serverID)
+        }
+
+        out, err := executeMultiPacket(conn.host, conn.password, command, 15*time.Second)
+        if err != nil {
+                return "", fmt.Errorf("%w: %v", ErrNotConnected, err)
+        }
+        return out, nil
 }
 
 func (m *Manager) Close() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for id, conn := range m.connections {
-		conn.mu.Lock()
-		if conn.client != nil {
-			if err := conn.client.Close(); err != nil {
-				m.logger.Warn("rcon close", "server", id, "error", err)
-			}
-			conn.client = nil
-		}
-		conn.mu.Unlock()
-	}
-	return nil
+        m.mu.Lock()
+        defer m.mu.Unlock()
+        for id, conn := range m.connections {
+                conn.mu.Lock()
+                if conn.client != nil {
+                        if err := conn.client.Close(); err != nil {
+                                m.logger.Warn("rcon close", "server", id, "error", err)
+                        }
+                        conn.client = nil
+                }
+                conn.mu.Unlock()
+        }
+        return nil
 }
 
 func (m *Manager) Disconnect(serverID string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	conn, ok := m.connections[serverID]
-	if !ok {
-		return
-	}
-	conn.mu.Lock()
-	if conn.client != nil {
-		_ = conn.client.Close()
-		conn.client = nil
-	}
-	conn.mu.Unlock()
-	delete(m.connections, serverID)
+        m.mu.Lock()
+        defer m.mu.Unlock()
+        conn, ok := m.connections[serverID]
+        if !ok {
+                return
+        }
+        conn.mu.Lock()
+        if conn.client != nil {
+                _ = conn.client.Close()
+                conn.client = nil
+        }
+        conn.mu.Unlock()
+        delete(m.connections, serverID)
 }

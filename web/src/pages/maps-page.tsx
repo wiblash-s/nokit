@@ -103,8 +103,14 @@ export function MapsPage({ serverId }: MapsPageProps) {
   const fetchWorkshopMaps = async () => {
     setWorkshopLoading(true)
     setWorkshopError(null)
+    // Guard against the request hanging forever (e.g. an unresponsive RCON
+    // connection) so the "Sync workshop" spinner always resolves.
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 25000)
     try {
-      const res = await fetch(`/api/servers/${serverId}/maps/workshop`)
+      const res = await fetch(`/api/servers/${serverId}/maps/workshop`, {
+        signal: controller.signal,
+      })
       if (!res.ok) {
         throw new Error(`Server returned ${res.status}`)
       }
@@ -112,8 +118,13 @@ export function MapsPage({ serverId }: MapsPageProps) {
       setWorkshopMaps(data)
     } catch (err) {
       console.error("Failed to fetch workshop maps:", err)
-      setWorkshopError("Could not load workshop maps. Make sure the server is connected via RCON.")
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setWorkshopError("Workshop sync timed out. The server may be unreachable or slow to respond via RCON.")
+      } else {
+        setWorkshopError("Could not load workshop maps. Make sure the server is connected via RCON.")
+      }
     } finally {
+      clearTimeout(timeout)
       setWorkshopLoading(false)
     }
   }

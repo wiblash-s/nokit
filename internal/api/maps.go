@@ -5,6 +5,7 @@ import (
         "net/http"
         "regexp"
         "strings"
+        "time"
 
         "github.com/codevski/defuse/internal/rcon"
         "github.com/codevski/defuse/internal/steam"
@@ -33,19 +34,33 @@ type WorkshopMapInfo struct {
 // annotated with a ThumbnailURL and the panel kicks off a background prefetch so
 // thumbnails are cached and ready by the time the browser requests them. A nil
 // steam client disables both behaviours.
-func WorkshopMapsHandler(mgr *rcon.Manager, steamClient *steam.Client) Handler {
+func WorkshopMapsHandler(mgr *rcon.Manager, steamClient *steam.Client, logger *slog.Logger) Handler {
         return func(w http.ResponseWriter, r *http.Request) error {
                 id := r.PathValue("id")
                 if id == "" {
                         return BadRequest("missing server id")
                 }
 
-                out, err := mgr.Execute(id, "maps *")
+                logger.Info("syncing workshop maps", "server", id)
+
+                // "maps *" returns a large, multi-packet response. ExecuteMulti reassembles
+                // all packets over a dedicated connection so we get the complete map list
+                // without truncation or desyncing the pooled RCON connection.
+                start := time.Now()
+                out, err := mgr.ExecuteMulti(id, "maps *")
+                elapsed := time.Since(start)
                 if err != nil {
+                        logger.Error("workshop map sync failed", "server", id, "error", err, "elapsed", elapsed)
                         return WrapHTTP(err, http.StatusBadGateway, "rcon error")
                 }
 
                 maps := parseWorkshopMaps(out)
+                logger.Info("workshop maps synced",
+                        "server", id,
+                        "map_count", len(maps),
+                        "output_bytes", len(out),
+                        "elapsed", elapsed,
+                )
 
                 if steamClient.Enabled() {
                         ids := make([]string, 0, len(maps))
