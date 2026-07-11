@@ -29,9 +29,25 @@ services:
       CS2_LOG_HTTP_SINK_URL: ${CS2_LOG_HTTP_SINK_URL:-http://defuse:8080/api/logs/http}
       # Optional shared secret guarding the HTTP log endpoint (empty = open).
       CS2_LOG_HTTP_TOKEN: ${CS2_LOG_HTTP_TOKEN:-}
+      # ---- Workshop maps: Mode B (filesystem scan, opt-in) ----
+      # Base dir the panel looks under for per-server workshop mounts. It expects
+      # a subdir named after each server's ID: /workshop/<serverId>. Default is
+      # /workshop; uncomment to override. A single server can also be pointed at
+      # an arbitrary path with WORKSHOP_PATH_<UPPER_ID> (server ID uppercased,
+      # hyphens -> underscores, e.g. WORKSHOP_PATH_KATZENSTUBE).
+      # WORKSHOP_BASE: /workshop
     volumes:
       - ./config.yaml:/etc/defuse/config.yaml:ro
       - nokit_data:/data
+      # ---- Workshop maps: Mode B (filesystem scan, opt-in) ----
+      # Mount your CS2 server's steamapps/workshop/content/730 directory at
+      # /workshop/<serverId> to enable exact ID<->name mapping, multi-version
+      # detection, and (when mounted read-write) uninstall. <serverId> is the
+      # slug shown in the panel URL. Leave it read-only (:ro) to keep uninstall
+      # disabled; the panel auto-detects writability with a runtime write-probe.
+      # For the bundled cs2 service below, the workshop content lives under its
+      # cs2_data volume; adjust the host path to match your setup:
+      # - /path/to/cs2/steamapps/workshop/content/730:/workshop/katzenstube:ro
     networks:
       - cs2net
 
