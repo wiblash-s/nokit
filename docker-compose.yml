@@ -36,6 +36,14 @@ services:
       # an arbitrary path with WORKSHOP_PATH_<UPPER_ID> (server ID uppercased,
       # hyphens -> underscores, e.g. WORKSHOP_PATH_KATZENSTUBE).
       # WORKSHOP_BASE: /workshop
+      # ---- Config management: mounted mode (opt-in) ----
+      # Base dir the panel looks under for per-server cfg mounts. It expects a
+      # subdir named after each server's ID: /configs/<serverId>. Default is
+      # /configs; uncomment to override. When a server's cfg dir is mounted the
+      # panel reads/writes .cfg files directly and exec runs `exec <file>` over
+      # RCON; otherwise configs are stored in the panel database and exec replays
+      # each line as an RCON command.
+      # CONFIG_BASE: /configs
     volumes:
       - ./config.yaml:/etc/defuse/config.yaml:ro
       - nokit_data:/data
@@ -48,6 +56,13 @@ services:
       # For the bundled cs2 service below, the workshop content lives under its
       # cs2_data volume; adjust the host path to match your setup:
       # - /path/to/cs2/steamapps/workshop/content/730:/workshop/katzenstube:ro
+      # ---- Config management: mounted mode (opt-in) ----
+      # Mount the CS2 server's cfg directory for direct config file management.
+      # <server-id> is the slug shown in the panel URL. Mount read-write (:rw) to
+      # allow creating/editing/deleting .cfg files from the panel; the panel
+      # auto-detects writability with a runtime write-probe. Without this mount
+      # the panel falls back to storing configs in its own database.
+      # - /path/to/cs2-server/game/csgo/cfg:/configs/<server-id>:rw
     networks:
       - cs2net
 

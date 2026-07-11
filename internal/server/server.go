@@ -9,6 +9,7 @@ import (
 
         "github.com/codevski/defuse/internal/api"
         "github.com/codevski/defuse/internal/auth"
+        "github.com/codevski/defuse/internal/configs"
         "github.com/codevski/defuse/internal/loghub"
         "github.com/codevski/defuse/internal/rcon"
         "github.com/codevski/defuse/internal/steam"
@@ -16,24 +17,26 @@ import (
 )
 
 type Server struct {
-        logger *slog.Logger
-        dist   fs.FS
-        store  *store.Store
-        rcon   *rcon.Manager
-        loghub *loghub.Hub
-        steam  *steam.Client
-        creds  auth.Credentials
+        logger  *slog.Logger
+        dist    fs.FS
+        store   *store.Store
+        rcon    *rcon.Manager
+        loghub  *loghub.Hub
+        steam   *steam.Client
+        creds   auth.Credentials
+        configs *configs.Manager
 }
 
 func New(logger *slog.Logger, dist fs.FS, st *store.Store, mgr *rcon.Manager, hub *loghub.Hub, steamClient *steam.Client, creds auth.Credentials) *Server {
         return &Server{
-                logger: logger,
-                dist:   dist,
-                store:  st,
-                rcon:   mgr,
-                loghub: hub,
-                steam:  steamClient,
-                creds:  creds,
+                logger:  logger,
+                dist:    dist,
+                store:   st,
+                rcon:    mgr,
+                loghub:  hub,
+                steam:   steamClient,
+                creds:   creds,
+                configs: configs.NewManager(st),
         }
 }
 
@@ -60,6 +63,11 @@ func (s *Server) Handler() http.Handler {
         protected.Handle("GET /api/servers/{id}/maps/workshop", api.Wrap(s.logger, api.WorkshopMapsHandler(s.rcon, s.steam, s.store, s.logger)))
         protected.Handle("POST /api/servers/{id}/maps/workshop/load", api.Wrap(s.logger, api.LoadWorkshopMapHandler(s.rcon, s.store, s.logger)))
         protected.Handle("DELETE /api/servers/{id}/maps/workshop/{workshopId}", api.Wrap(s.logger, api.UninstallWorkshopMapHandler(s.rcon, s.store, s.logger)))
+        protected.Handle("GET /api/servers/{id}/configs", api.Wrap(s.logger, api.ListConfigsHandler(s.configs)))
+        protected.Handle("GET /api/servers/{id}/configs/{name}", api.Wrap(s.logger, api.GetConfigHandler(s.configs)))
+        protected.Handle("PUT /api/servers/{id}/configs/{name}", api.Wrap(s.logger, api.SaveConfigHandler(s.configs)))
+        protected.Handle("DELETE /api/servers/{id}/configs/{name}", api.Wrap(s.logger, api.DeleteConfigHandler(s.configs)))
+        protected.Handle("POST /api/servers/{id}/configs/{name}/exec", api.Wrap(s.logger, api.ExecConfigHandler(s.configs, s.rcon, s.logger)))
         protected.Handle("GET /api/maps/thumbnail/{id}", api.Wrap(s.logger, api.ThumbnailHandler(s.steam, s.logger)))
         protected.Handle("GET /api/logs/stream", api.Wrap(s.logger, api.LogsStreamHandler(s.loghub)))
 

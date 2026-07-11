@@ -67,6 +67,20 @@ func (s *Store) migrate() error {
                         updated_at  INTEGER NOT NULL,
                         PRIMARY KEY (server_id, workshop_id)
                 );
+
+                -- Panel-stored config files, used as the fallback for the config
+                -- management feature when no cfg volume is mounted for a server. The
+                -- panel keeps the .cfg contents here and, on exec, replays each command
+                -- line over RCON instead of issuing a single exec of the file.
+                CREATE TABLE IF NOT EXISTS panel_configs (
+                        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                        server_id  TEXT NOT NULL,
+                        name       TEXT NOT NULL,
+                        content    TEXT NOT NULL DEFAULT '',
+                        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(server_id, name)
+                );
         `)
         return err
 }
