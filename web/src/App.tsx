@@ -6,6 +6,7 @@ import { ServerPage } from "@/pages/server-page"
 import { DashboardPage } from "@/pages/dashboard-page"
 import { ConfigEditorPage } from "@/pages/config-editor-page"
 import { MapsPage } from "@/pages/maps-page"
+import { PlayersPage } from "@/pages/players-page"
 import { Console } from "@/components/console"
 import { LogsPanel } from "@/components/logs"
 import { Header } from "./components/header"
@@ -82,6 +83,11 @@ function MapsRoute() {
   return <MapsPage serverId={id!} />
 }
 
+function PlayersRoute() {
+  const { id } = useParams<{ id: string }>()
+  return <PlayersPage serverId={id!} />
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -113,7 +119,7 @@ export default function App() {
           <Route path="dashboard" element={<DashboardRoute />} />
           <Route path="console" element={<ConsoleRoute />} />
           <Route path="logs" element={<LogsPanel />} />
-          <Route path="players" element={<PlaceholderPage title="Players" />} />
+          <Route path="players" element={<PlayersRoute />} />
           <Route path="maps" element={<MapsRoute />} />
           <Route path="presets" element={<PlaceholderPage title="CVAR Presets" />} />
           <Route path="config" element={<ConfigEditorRoute />} />
