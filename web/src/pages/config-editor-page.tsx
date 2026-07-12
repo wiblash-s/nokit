@@ -39,7 +39,9 @@ function useToasts() {
     setToasts((t) => [...t, { id, kind, message }])
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4000)
   }, [])
-  return { toasts, success: (m: string) => push("success", m), error: (m: string) => push("error", m) }
+  const success = useCallback((m: string) => push("success", m), [push])
+  const error = useCallback((m: string) => push("error", m), [push])
+  return { toasts, success, error }
 }
 
 function ToastStack({ toasts }: { toasts: Toast[] }) {
