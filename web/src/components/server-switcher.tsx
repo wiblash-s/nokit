@@ -1,6 +1,8 @@
 import { useRef, useState, useEffect, type FormEvent } from "react"
 import { useNavigate } from "react-router-dom"
 import type { ServerInfo } from "@/hooks/useServers"
+import { Can } from "@/components/can"
+import { usePermissions } from "@/hooks/auth-context"
 
 type Props = {
   servers: ServerInfo[]
@@ -10,6 +12,8 @@ type Props = {
 
 export function ServerSwitcher({ servers, currentId, onRefresh }: Props) {
   const navigate = useNavigate()
+  const { can } = usePermissions()
+  const canAddServer = can("add_server")
   const [open, setOpen] = useState(false)
   const [adding, setAdding] = useState(false)
   const [name, setName] = useState("")
@@ -120,28 +124,30 @@ export function ServerSwitcher({ servers, currentId, onRefresh }: Props) {
                     {s.host}
                   </p>
                 </div>
-                <button
-                  onClick={(e) => handleRemove(e, s.id)}
-                  className="rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                  title={`remove ${s.name}`}
-                >
-                  <svg
-                    viewBox="0 0 16 16"
-                    className="h-3.5 w-3.5"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
+                <Can perm="delete_server">
+                  <button
+                    onClick={(e) => handleRemove(e, s.id)}
+                    className="rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                    title={`remove ${s.name}`}
                   >
-                    <path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9" />
-                  </svg>
-                </button>
+                    <svg
+                      viewBox="0 0 16 16"
+                      className="h-3.5 w-3.5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                    >
+                      <path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9" />
+                    </svg>
+                  </button>
+                </Can>
               </div>
             ))}
           </div>
 
           <div className="border-t border-border" />
 
-          {!adding ? (
+          {!canAddServer ? null : !adding ? (
             <button
               onClick={() => setAdding(true)}
               className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"

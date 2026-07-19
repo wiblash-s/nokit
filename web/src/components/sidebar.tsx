@@ -11,11 +11,15 @@ import {
   Clock,
   Shield,
 } from "lucide-react"
+import { usePermissions } from "@/hooks/auth-context"
+import type { Permission } from "@/hooks/useAuth"
 
 type NavItem = {
   to: string
   icon: React.ElementType
   label: string
+  /** Permission required to see this item. Omit for items everyone with a role sees. */
+  perm?: Permission
 }
 
 type NavSection = {
@@ -27,31 +31,37 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: "SERVER",
     items: [
-      { to: "dashboard", icon: LayoutDashboard, label: "Dashboard" },
-      { to: "console", icon: Terminal, label: "RCON Console" },
-      { to: "logs", icon: ScrollText, label: "Live Logs" },
-      { to: "players", icon: Users, label: "Players" },
+      { to: "dashboard", icon: LayoutDashboard, label: "Dashboard", perm: "view_dashboard" },
+      { to: "console", icon: Terminal, label: "RCON Console", perm: "send_console_command" },
+      { to: "logs", icon: ScrollText, label: "Live Logs", perm: "view_logs" },
+      { to: "players", icon: Users, label: "Players", perm: "view_players" },
     ],
   },
   {
     title: "CONFIGURATION",
     items: [
-      { to: "maps", icon: Map, label: "Maps" },
-      { to: "presets", icon: ListChecks, label: "CVAR Presets" },
-      { to: "config", icon: FileCode, label: "Config Editor" },
+      { to: "maps", icon: Map, label: "Maps", perm: "view_dashboard" },
+      { to: "presets", icon: ListChecks, label: "CVAR Presets", perm: "edit_config" },
+      { to: "config", icon: FileCode, label: "Config Editor", perm: "edit_config" },
     ],
   },
   {
     title: "SYSTEM",
     items: [
-      { to: "plugins", icon: Puzzle, label: "Plugins" },
-      { to: "scheduler", icon: Clock, label: "Scheduler" },
-      { to: "admin", icon: Shield, label: "Admin" },
+      { to: "plugins", icon: Puzzle, label: "Plugins", perm: "edit_config" },
+      { to: "scheduler", icon: Clock, label: "Scheduler", perm: "edit_config" },
+      { to: "admin", icon: Shield, label: "Admin", perm: "view_audit" },
     ],
   },
 ]
 
 export function Sidebar({ currentServerId }: { currentServerId: string }) {
+  const { can } = usePermissions()
+  const sections = NAV_SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => !item.perm || can(item.perm)),
+  })).filter((section) => section.items.length > 0)
+
   return (
     <aside className="fixed left-0 top-0 z-30 flex h-screen w-56 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       {/* Logo */}
@@ -66,7 +76,7 @@ export function Sidebar({ currentServerId }: { currentServerId: string }) {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-6 overflow-y-auto py-4">
-        {NAV_SECTIONS.map((section) => (
+        {sections.map((section) => (
           <div key={section.title} className="px-3">
             <div className="mb-2 px-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
               {section.title}

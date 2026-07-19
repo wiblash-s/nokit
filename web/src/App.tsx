@@ -1,5 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router-dom"
-import { useAuth } from "@/hooks/useAuth"
+import { AuthProvider, useAuthContext } from "@/hooks/auth-context"
 import { useServers } from "@/hooks/useServers"
 import { LoginPage } from "@/pages/login-page"
 import { ServerPage } from "@/pages/server-page"
@@ -15,7 +15,7 @@ import { Sidebar } from "./components/sidebar"
 import { Footer } from "./components/footer"
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  const auth = useAuth()
+  const auth = useAuthContext()
   if (auth.status === "loading") return null
   if (auth.status === "unauthenticated") {
     return <Navigate to="/login" replace />
@@ -91,6 +91,7 @@ function PlayersRoute() {
 export default function App() {
   return (
     <BrowserRouter>
+      <AuthProvider>
       <Routes>
         <Route path="/login" element={<Layout />}>
           <Route index element={<LoginPage />} />
@@ -130,6 +131,7 @@ export default function App() {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </AuthProvider>
     </BrowserRouter>
   )
 }

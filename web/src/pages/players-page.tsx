@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Toaster } from "@/components/ui/toaster"
 import { toast } from "@/hooks/use-toast"
+import { Can } from "@/components/can"
 import {
   fetchBans,
   fetchPlayers,
@@ -392,14 +393,16 @@ function BansTab({ serverId, active }: { serverId: string; active: boolean }) {
                   </Badge>
                 </TableCell>
                 <TableCell className="text-right">
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => setTarget(b)}
-                  >
-                    <ShieldOff className="size-3.5" />
-                    Unban
-                  </Button>
+                  <Can perm="unban_player">
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => setTarget(b)}
+                    >
+                      <ShieldOff className="size-3.5" />
+                      Unban
+                    </Button>
+                  </Can>
                 </TableCell>
               </TableRow>
             ))}

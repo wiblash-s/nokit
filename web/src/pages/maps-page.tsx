@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import mapsData from "@/data/cs2-maps.json"
+import { usePermissions } from "@/hooks/auth-context"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -109,6 +110,8 @@ type MapsPageProps = {
 }
 
 export function MapsPage({ serverId }: MapsPageProps) {
+  const { can } = usePermissions()
+  const canManageWorkshop = can("manage_workshop")
   const [currentMap, setCurrentMap] = useState("de_mirage")
   const [favorites, setFavorites] = useState<string[]>([])
   const [showFavsOnly, setShowFavsOnly] = useState(false)
@@ -419,17 +422,19 @@ export function MapsPage({ serverId }: MapsPageProps) {
           </div>
         </div>
 
-        <div className="mb-4 flex gap-2">
-          <Input
-            placeholder="workshop ID — e.g. 3070900859"
-            value={workshopId}
-            onChange={(e) => setWorkshopId(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && loadWorkshopMap()}
-          />
-          <Button onClick={loadWorkshopMap} disabled={loading || !workshopId.trim()}>
-            Download & switch
-          </Button>
-        </div>
+        {canManageWorkshop && (
+          <div className="mb-4 flex gap-2">
+            <Input
+              placeholder="workshop ID — e.g. 3070900859"
+              value={workshopId}
+              onChange={(e) => setWorkshopId(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && loadWorkshopMap()}
+            />
+            <Button onClick={loadWorkshopMap} disabled={loading || !workshopId.trim()}>
+              Download & switch
+            </Button>
+          </div>
+        )}
 
         {workshopError && (
           <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
@@ -465,7 +470,7 @@ export function MapsPage({ serverId }: MapsPageProps) {
                 key={map.workshopId || map.name}
                 map={map}
                 onSwitch={() => switchToWorkshopMap(map)}
-                onUninstall={workshopWritable ? () => uninstallWorkshopMap(map) : undefined}
+                onUninstall={workshopWritable && canManageWorkshop ? () => uninstallWorkshopMap(map) : undefined}
                 disabled={loading}
               />
             ))}
