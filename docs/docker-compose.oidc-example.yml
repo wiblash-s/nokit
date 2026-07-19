@@ -1,0 +1,115 @@
+# Example Docker Compose configuration for nokit with OIDC (Authelia) authentication
+# This extends your existing docker-compose.yml with OIDC environment variables
+
+services:
+  defuse:
+    image: ghcr.io/codevski/defuse:latest
+    container_name: defuse
+    restart: unless-stopped
+    networks:
+      - cs2
+      - authelia  # Add this network to communicate with Authelia
+    ports:
+      - "8080:8080"
+      - "27500:27500/udp"
+    environment:
+      # ---- Authentication (OIDC mode) ----
+      AUTH_MODE: oidc
+      
+      # Authelia issuer URL (must be reachable from the defuse container)
+      # Use the internal Docker network hostname if Authelia is in the same stack
+      OIDC_ISSUER_URL: https://auth.example.com
+      
+      # OAuth2 client credentials (must match Authelia client configuration)
+      OIDC_CLIENT_ID: cs2rcon
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}  # Use Docker secret or env var
+      
+      # Public callback URL (must match Authelia's allowed redirect_uris)
+      # This is the URL users' browsers will be redirected to, so use your public domain
+      OIDC_REDIRECT_URL: https://rcon.example.com/api/auth/callback
+      
+      # Optional: Override requested scopes (defaults to "openid profile email groups")
+      # OIDC_SCOPES: "openid profile email groups"
+      
+      # Optional: Post-logout redirect URL
+      # OIDC_POST_LOGOUT_REDIRECT_URL: https://rcon.example.com/login
+      
+      # Optional: Only set to "1" for local HTTP testing (disables Secure cookie flag)
+      # AUTH_COOKIE_INSECURE: "1"
+      
+      # ---- CS2 Server Configuration ----
+      RCON_PASSWORD: ${RCON_PASSWORD}
+      STEAM_GSLT: ${STEAM_GSLT}
+      STEAM_API_KEY: ${STEAM_API_KEY}
+      CS2_LOG_LISTEN_PORT: 27500
+      CS2_LOG_SINK_ADDR: defuse:27500
+      CS2_LOG_HTTP_SINK_URL: http://defuse:8080/api/logs/http
+    volumes:
+      - ./data:/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  cs2:
+    image: joedwards32/cs2:latest
+    container_name: cs2
+    restart: unless-stopped
+    networks:
+      - cs2
+    ports:
+      - "27015:27015/tcp"
+      - "27015:27015/udp"
+    environment:
+      SRCDS_TOKEN: ${STEAM_GSLT}
+      RCON_PASSWORD: ${RCON_PASSWORD}
+    volumes:
+      - cs2-data:/home/steam/cs2-dedicated
+
+networks:
+  cs2:
+    driver: bridge
+  authelia:
+    external: true  # Assumes Authelia is on an existing "authelia" network
+    # If Authelia is in a different stack, create a shared network:
+    # docker network create authelia
+
+volumes:
+  cs2-data:
+
+# ============================================================================
+# ALTERNATIVE: If running Authelia in the same docker-compose stack
+# ============================================================================
+# Uncomment and customize this section if you want everything in one stack:
+#
+#  authelia:
+#    image: authelia/authelia:latest
+#    container_name: authelia
+#    restart: unless-stopped
+#    networks:
+#      - authelia
+#    ports:
+#      - "9091:9091"
+#    environment:
+#      TZ: Europe/Vienna
+#    volumes:
+#      - ./authelia:/config
+#
+#  lldap:
+#    image: lldap/lldap:latest
+#    container_name: lldap
+#    restart: unless-stopped
+#    networks:
+#      - authelia
+#    ports:
+#      - "3890:3890"
+#      - "17170:17170"
+#    environment:
+#      UID: 1000
+#      GID: 1000
+#      TZ: Europe/Vienna
+#      LLDAP_JWT_SECRET: ${LLDAP_JWT_SECRET}
+#      LLDAP_LDAP_USER_PASS: ${LLDAP_LDAP_USER_PASS}
+#      LLDAP_LDAP_BASE_DN: dc=example,dc=com
+#    volumes:
+#      - lldap-data:/data
+#
+# volumes:
+#   lldap-data:

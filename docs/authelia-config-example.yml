@@ -1,0 +1,251 @@
+---
+# Authelia Configuration Example for nokit CS2 RCON Panel
+# Save this as: /path/to/authelia/configuration.yml
+#
+# This is a MINIMAL example focusing on the OIDC client configuration for nokit.
+# For a complete production setup, see: https://www.authelia.com/configuration/prologue/introduction/
+
+###############################################################################
+# Server Configuration
+###############################################################################
+server:
+  address: 'tcp://0.0.0.0:9091'
+
+###############################################################################
+# Logging
+###############################################################################
+log:
+  level: 'info'
+  format: 'text'
+
+###############################################################################
+# Theme (optional)
+###############################################################################
+theme: 'auto'
+
+###############################################################################
+# TOTP (Time-based One-Time Password)
+###############################################################################
+totp:
+  issuer: 'authelia.com'
+  period: 30
+  skew: 1
+
+###############################################################################
+# Authentication Backend (LDAP - lldap)
+###############################################################################
+authentication_backend:
+  ldap:
+    address: 'ldap://lldap:3890'  # Use Docker service name or IP
+    implementation: 'custom'
+    timeout: '5s'
+    start_tls: false  # Set to true if using StartTLS
+    base_dn: 'dc=example,dc=com'  # Match your LLDAP_LDAP_BASE_DN
+    
+    # Admin user for Authelia to query LDAP
+    user: 'uid=admin,ou=people,dc=example,dc=com'
+    password: 'your-lldap-admin-password'  # LLDAP_LDAP_USER_PASS
+    
+    # User search configuration
+    users_filter: '(&(|({username_attribute}={input})({mail_attribute}={input}))(objectClass=person))'
+    username_attribute: 'uid'
+    mail_attribute: 'mail'
+    display_name_attribute: 'displayName'
+    
+    # Group search configuration (CRITICAL for nokit permissions)
+    groups_filter: '(member={dn})'
+    group_search_mode: 'filter'
+    group_name_attribute: 'cn'
+    additional_groups_dn: 'ou=groups'
+    additional_users_dn: 'ou=people'
+
+###############################################################################
+# Session
+###############################################################################
+session:
+  secret: 'insecure_session_secret_change_me'  # CHANGE THIS - use a long random string
+  cookies:
+    - name: 'authelia_session'
+      domain: 'example.com'  # Your root domain
+      authelia_url: 'https://auth.example.com'
+      default_redirection_url: 'https://rcon.example.com'
+  
+  # Session storage (Redis recommended for production)
+  redis:
+    host: redis
+    port: 6379
+    # password: 'redis-password'
+    # database_index: 0
+
+###############################################################################
+# Storage (User data, 2FA secrets, etc.)
+###############################################################################
+storage:
+  encryption_key: 'insecure_encryption_key_change_me'  # CHANGE THIS
+  
+  # Local storage (for testing - use PostgreSQL/MySQL in production)
+  local:
+    path: '/config/db.sqlite3'
+  
+  # PostgreSQL (recommended for production)
+  # postgres:
+  #   address: 'tcp://postgres:5432'
+  #   database: 'authelia'
+  #   username: 'authelia'
+  #   password: 'your-postgres-password'
+
+###############################################################################
+# Notifier (for password resets, 2FA setup notifications)
+###############################################################################
+notifier:
+  # File-based (testing only)
+  filesystem:
+    filename: '/config/notification.txt'
+  
+  # SMTP (recommended for production)
+  # smtp:
+  #   address: 'smtp://smtp.gmail.com:587'
+  #   username: 'your-email@gmail.com'
+  #   password: 'your-app-password'
+  #   sender: 'Authelia <noreply@example.com>'
+  #   subject: '[Authelia] {title}'
+
+###############################################################################
+# Access Control (who can access what)
+###############################################################################
+access_control:
+  default_policy: 'deny'
+  
+  rules:
+    # Allow nokit access to users with cs2-rcon-* groups
+    # (The panel enforces granular permissions based on specific groups)
+    - domain: 'rcon.example.com'
+      policy: 'two_factor'  # or 'one_factor' if you don't want 2FA
+      subject:
+        - 'group:cs2-rcon-viewer'
+        - 'group:cs2-rcon-operator'
+        - 'group:cs2-rcon-admin'
+        - 'group:cs2-rcon-superadmin'
+
+###############################################################################
+# Identity Providers (OIDC)
+###############################################################################
+identity_providers:
+  oidc:
+    # HMAC secret for signing tokens (CHANGE THIS)
+    hmac_secret: 'insecure_hmac_secret_change_me'
+    
+    # Issuer URL (must match OIDC_ISSUER_URL in nokit)
+    issuer_private_key: |
+      -----BEGIN RSA PRIVATE KEY-----
+      # Generate with: openssl genrsa -out private.pem 4096
+      # Paste the full key here, or use issuer_private_keys with file path
+      -----END RSA PRIVATE KEY-----
+    # Alternative: Load from file
+    # issuer_private_keys:
+    #   - key_id: 'main'
+    #     key: {{ secret "/config/secrets/oidc_key.pem" }}
+    
+    # Access token lifespan
+    access_token_lifespan: '1h'
+    authorize_code_lifespan: '1m'
+    id_token_lifespan: '1h'
+    refresh_token_lifespan: '90m'
+    
+    # Enable PKCE (nokit uses S256)
+    enable_pkce_plain_challenge: false
+    enforce_pkce: 'public_clients_only'
+    
+    # CORS settings (adjust if needed)
+    cors:
+      endpoints:
+        - 'authorization'
+        - 'token'
+        - 'revocation'
+        - 'introspection'
+        - 'userinfo'
+      allowed_origins:
+        - 'https://rcon.example.com'
+      allowed_origins_from_client_redirect_uris: true
+    
+    # =========================================================================
+    # OIDC Client for nokit CS2 RCON Panel
+    # =========================================================================
+    clients:
+      - client_id: 'cs2rcon'
+        client_name: 'CS2 RCON Panel'
+        
+        # Client secret (MUST match OIDC_CLIENT_SECRET in nokit)
+        # Generate with: openssl rand -base64 64
+        client_secret: '$pbkdf2-sha512$310000$...'  # Hashed with: authelia crypto hash generate pbkdf2 --variant sha512 --random --random.length 72
+        # To generate: docker run --rm authelia/authelia:latest authelia crypto hash generate pbkdf2 --password 'your-plaintext-secret'
+        
+        # Public URLs
+        public: false
+        
+        # Authorization policy (can also be handled by access_control)
+        authorization_policy: 'two_factor'  # or 'one_factor'
+        
+        # Redirect URIs (MUST include OIDC_REDIRECT_URL from nokit)
+        redirect_uris:
+          - 'https://rcon.example.com/api/auth/callback'
+        
+        # Scopes (nokit requests: openid profile email groups)
+        scopes:
+          - 'openid'
+          - 'profile'
+          - 'email'
+          - 'groups'
+        
+        # Grant types
+        grant_types:
+          - 'authorization_code'
+          - 'refresh_token'
+        
+        # Response types
+        response_types:
+          - 'code'
+        
+        # Response modes
+        response_modes:
+          - 'query'
+          - 'form_post'
+        
+        # Token endpoint auth method
+        token_endpoint_auth_method: 'client_secret_basic'
+        
+        # User info signing algorithm
+        userinfo_signed_response_alg: 'none'
+        
+        # ID token signing algorithm
+        id_token_signed_response_alg: 'RS256'
+        
+        # Sector identifier (optional)
+        # sector_identifier_uri: ''
+
+###############################################################################
+# Regulation (brute-force protection)
+###############################################################################
+regulation:
+  max_retries: 5
+  find_time: '2m'
+  ban_time: '5m'
+
+###############################################################################
+# NTP (time sync for TOTP)
+###############################################################################
+ntp:
+  address: 'time.cloudflare.com:123'
+  version: 4
+  max_desync: '3s'
+
+###############################################################################
+# IMPORTANT NOTES
+###############################################################################
+# 1. CHANGE ALL SECRETS: session.secret, storage.encryption_key, oidc.hmac_secret
+# 2. Generate RSA key for OIDC: openssl genrsa -out /config/secrets/oidc_key.pem 4096
+# 3. Hash client_secret: docker run --rm authelia/authelia:latest authelia crypto hash generate pbkdf2 --password 'your-plaintext-secret'
+# 4. Update domains: replace example.com, auth.example.com, rcon.example.com with your actual domains
+# 5. Configure Redis or PostgreSQL for production
+# 6. Set up SMTP for email notifications
+# 7. Generate secrets: openssl rand -base64 64
