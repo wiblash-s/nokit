@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { CfgEditor } from "@/components/cfg-editor"
+import { Can } from "@/components/can"
 import { cn } from "@/lib/utils"
 import {
   listConfigs,
@@ -287,7 +288,7 @@ export function ConfigEditorPage({ serverId }: ConfigEditorPageProps) {
                     <File className="h-4 w-4 shrink-0 text-muted-foreground" />
                     <span className="truncate">{f.name}</span>
                   </button>
-                  {canWrite && (
+                  <Can perm="delete_config">
                     <button
                       onClick={() => void onDelete(f.name)}
                       className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive"
@@ -295,7 +296,7 @@ export function ConfigEditorPage({ serverId }: ConfigEditorPageProps) {
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
-                  )}
+                  </Can>
                 </div>
               ))}
             </div>

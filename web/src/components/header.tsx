@@ -2,6 +2,7 @@ import { useNavigate } from "react-router-dom"
 import { Search, Settings, LogOut } from "lucide-react"
 import type { ServerInfo } from "@/hooks/useServers"
 import { ServerSwitcher } from "./server-switcher"
+import { useUser } from "@/hooks/auth-context"
 
 type Props = {
   servers: ServerInfo[]
@@ -23,11 +24,26 @@ export function Header({
   map,
 }: Props) {
   const navigate = useNavigate()
+  const user = useUser()
 
   const handleLogout = async () => {
-    await fetch("/api/logout", { method: "POST" })
+    try {
+      const r = await fetch("/api/logout", { method: "POST" })
+      const body = await r.json().catch(() => ({}))
+      // In OIDC mode the backend may return a provider end-session URL so we can
+      // complete single sign-out. Otherwise fall back to the local login page.
+      if (body?.redirect) {
+        window.location.assign(body.redirect)
+        return
+      }
+    } catch {
+      // ignore — still send the user to the login page below
+    }
     navigate("/login", { replace: true })
   }
+
+  const initial = (user?.username || "?").charAt(0).toUpperCase()
+  const topRole = user?.roles?.[user.roles.length - 1]
 
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-background">
@@ -70,6 +86,25 @@ export function Header({
               disabled
             />
           </div>
+
+          {user && (
+            <div className="flex items-center gap-2 pl-1 pr-1">
+              <div
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground"
+                title={user.email || user.username}
+              >
+                {initial}
+              </div>
+              <div className="hidden flex-col leading-tight sm:flex">
+                <span className="text-xs font-medium">{user.username}</span>
+                {topRole && (
+                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    {topRole.replace("cs2-rcon-", "")}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
           <button
             className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"

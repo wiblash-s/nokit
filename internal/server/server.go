@@ -23,11 +23,11 @@ type Server struct {
         rcon    *rcon.Manager
         loghub  *loghub.Hub
         steam   *steam.Client
-        creds   auth.Credentials
+        authn   *auth.Authenticator
         configs *configs.Manager
 }
 
-func New(logger *slog.Logger, dist fs.FS, st *store.Store, mgr *rcon.Manager, hub *loghub.Hub, steamClient *steam.Client, creds auth.Credentials) *Server {
+func New(logger *slog.Logger, dist fs.FS, st *store.Store, mgr *rcon.Manager, hub *loghub.Hub, steamClient *steam.Client, authn *auth.Authenticator) *Server {
         return &Server{
                 logger:  logger,
                 dist:    dist,
@@ -35,7 +35,7 @@ func New(logger *slog.Logger, dist fs.FS, st *store.Store, mgr *rcon.Manager, hu
                 rcon:    mgr,
                 loghub:  hub,
                 steam:   steamClient,
-                creds:   creds,
+                authn:   authn,
                 configs: configs.NewManager(st),
         }
 }
@@ -43,7 +43,13 @@ func New(logger *slog.Logger, dist fs.FS, st *store.Store, mgr *rcon.Manager, hu
 func (s *Server) Handler() http.Handler {
         mux := http.NewServeMux()
 
-        mux.Handle("POST /api/login", api.Wrap(s.logger, api.LoginHandler(s.creds, s.store)))
+        // Public auth endpoints.
+        mux.Handle("GET /api/auth/config", api.Wrap(s.logger, api.AuthConfigHandler(s.authn)))
+        mux.Handle("POST /api/login", api.Wrap(s.logger, api.LoginHandler(s.authn)))
+        // OIDC redirect flow. These write redirects directly rather than JSON, so
+        // they are registered as raw handlers (not wrapped by api.Wrap).
+        mux.HandleFunc("GET /api/auth/login", s.authn.BeginLogin)
+        mux.HandleFunc("GET /api/auth/callback", s.authn.HandleCallback)
         mux.Handle("GET /api/health", api.Wrap(s.logger, s.health))
 
         // CS2 HTTP log ingest (`logaddress_add_http`). This is public and
@@ -54,27 +60,38 @@ func (s *Server) Handler() http.Handler {
         mux.Handle("POST /api/logs/http", api.Wrap(s.logger, api.LogsIngestHTTPHandler(s.loghub, logHTTPToken())))
 
         protected := http.NewServeMux()
-        protected.Handle("POST /api/logout", api.Wrap(s.logger, api.LogoutHandler(s.store)))
-        protected.Handle("GET /api/me", api.Wrap(s.logger, api.MeHandler()))
-        protected.Handle("GET /api/servers", api.Wrap(s.logger, api.ListServersHandler(s.store)))
-        protected.Handle("POST /api/servers", api.Wrap(s.logger, api.AddServerHandler(s.store, s.rcon)))
-        protected.Handle("DELETE /api/servers/{id}", api.Wrap(s.logger, api.DeleteServerHandler(s.store, s.rcon)))
-        protected.Handle("POST /api/servers/{id}/rcon", api.Wrap(s.logger, api.RCONHandler(s.rcon)))
-        protected.Handle("GET /api/servers/{id}/players", api.Wrap(s.logger, api.PlayersHandler(s.rcon, s.logger)))
-        protected.Handle("GET /api/servers/{id}/bans", api.Wrap(s.logger, api.BansHandler(s.rcon, s.configs)))
-        protected.Handle("DELETE /api/servers/{id}/bans/{steamid}", api.Wrap(s.logger, api.UnbanHandler(s.rcon, s.configs, s.logger)))
-        protected.Handle("GET /api/servers/{id}/maps/workshop", api.Wrap(s.logger, api.WorkshopMapsHandler(s.rcon, s.steam, s.store, s.logger)))
-        protected.Handle("POST /api/servers/{id}/maps/workshop/load", api.Wrap(s.logger, api.LoadWorkshopMapHandler(s.rcon, s.store, s.logger)))
-        protected.Handle("DELETE /api/servers/{id}/maps/workshop/{workshopId}", api.Wrap(s.logger, api.UninstallWorkshopMapHandler(s.rcon, s.store, s.logger)))
-        protected.Handle("GET /api/servers/{id}/configs", api.Wrap(s.logger, api.ListConfigsHandler(s.configs)))
-        protected.Handle("GET /api/servers/{id}/configs/{name}", api.Wrap(s.logger, api.GetConfigHandler(s.configs)))
-        protected.Handle("PUT /api/servers/{id}/configs/{name}", api.Wrap(s.logger, api.SaveConfigHandler(s.configs)))
-        protected.Handle("DELETE /api/servers/{id}/configs/{name}", api.Wrap(s.logger, api.DeleteConfigHandler(s.configs)))
-        protected.Handle("POST /api/servers/{id}/configs/{name}/exec", api.Wrap(s.logger, api.ExecConfigHandler(s.configs, s.rcon, s.logger)))
-        protected.Handle("GET /api/maps/thumbnail/{id}", api.Wrap(s.logger, api.ThumbnailHandler(s.steam, s.logger)))
-        protected.Handle("GET /api/logs/stream", api.Wrap(s.logger, api.LogsStreamHandler(s.loghub)))
 
-        mux.Handle("/api/", auth.Middleware(s.store, protected))
+        // Any authenticated user (with a role) may inspect their own session and log out.
+        protected.Handle("POST /api/logout", api.Wrap(s.logger, api.LogoutHandler(s.authn)))
+        protected.Handle("GET /api/me", api.Wrap(s.logger, api.MeHandler()))
+
+        // Read-only (viewer and up).
+        protected.Handle("GET /api/servers", api.Wrap(s.logger, api.RequirePerm(auth.PermViewDashboard, api.ListServersHandler(s.store))))
+        protected.Handle("GET /api/servers/{id}/players", api.Wrap(s.logger, api.RequirePerm(auth.PermViewPlayers, api.PlayersHandler(s.rcon, s.logger))))
+        protected.Handle("GET /api/servers/{id}/bans", api.Wrap(s.logger, api.RequirePerm(auth.PermViewPlayers, api.BansHandler(s.rcon, s.configs))))
+        protected.Handle("GET /api/servers/{id}/maps/workshop", api.Wrap(s.logger, api.RequirePerm(auth.PermViewDashboard, api.WorkshopMapsHandler(s.rcon, s.steam, s.store, s.logger))))
+        protected.Handle("GET /api/maps/thumbnail/{id}", api.Wrap(s.logger, api.RequirePerm(auth.PermViewDashboard, api.ThumbnailHandler(s.steam, s.logger))))
+        protected.Handle("GET /api/logs/stream", api.Wrap(s.logger, api.RequirePerm(auth.PermViewLogs, api.LogsStreamHandler(s.loghub))))
+
+        // Operator: RCON console.
+        protected.Handle("POST /api/servers/{id}/rcon", api.Wrap(s.logger, api.RequirePerm(auth.PermSendConsoleCommand, api.Audited(s.store, "rcon.command", api.RCONHandler(s.rcon)))))
+
+        // Admin: server management, workshop maps, config editing.
+        protected.Handle("POST /api/servers", api.Wrap(s.logger, api.RequirePerm(auth.PermAddServer, api.Audited(s.store, "server.add", api.AddServerHandler(s.store, s.rcon)))))
+        protected.Handle("DELETE /api/servers/{id}/bans/{steamid}", api.Wrap(s.logger, api.RequirePerm(auth.PermUnbanPlayer, api.Audited(s.store, "player.unban", api.UnbanHandler(s.rcon, s.configs, s.logger)))))
+        protected.Handle("POST /api/servers/{id}/maps/workshop/load", api.Wrap(s.logger, api.RequirePerm(auth.PermManageWorkshop, api.Audited(s.store, "workshop.load", api.LoadWorkshopMapHandler(s.rcon, s.store, s.logger)))))
+        protected.Handle("DELETE /api/servers/{id}/maps/workshop/{workshopId}", api.Wrap(s.logger, api.RequirePerm(auth.PermManageWorkshop, api.Audited(s.store, "workshop.uninstall", api.UninstallWorkshopMapHandler(s.rcon, s.store, s.logger)))))
+        protected.Handle("GET /api/servers/{id}/configs", api.Wrap(s.logger, api.RequirePerm(auth.PermEditConfig, api.ListConfigsHandler(s.configs))))
+        protected.Handle("GET /api/servers/{id}/configs/{name}", api.Wrap(s.logger, api.RequirePerm(auth.PermEditConfig, api.GetConfigHandler(s.configs))))
+        protected.Handle("PUT /api/servers/{id}/configs/{name}", api.Wrap(s.logger, api.RequirePerm(auth.PermEditConfig, api.Audited(s.store, "config.save", api.SaveConfigHandler(s.configs)))))
+        protected.Handle("POST /api/servers/{id}/configs/{name}/exec", api.Wrap(s.logger, api.RequirePerm(auth.PermExecConfig, api.Audited(s.store, "config.exec", api.ExecConfigHandler(s.configs, s.rcon, s.logger)))))
+
+        // Superadmin: destructive operations + audit log.
+        protected.Handle("DELETE /api/servers/{id}", api.Wrap(s.logger, api.RequirePerm(auth.PermDeleteServer, api.Audited(s.store, "server.delete", api.DeleteServerHandler(s.store, s.rcon)))))
+        protected.Handle("DELETE /api/servers/{id}/configs/{name}", api.Wrap(s.logger, api.RequirePerm(auth.PermDeleteConfig, api.Audited(s.store, "config.delete", api.DeleteConfigHandler(s.configs)))))
+        protected.Handle("GET /api/audit", api.Wrap(s.logger, api.RequirePerm(auth.PermViewAudit, api.AuditLogHandler(s.store))))
+
+        mux.Handle("/api/", s.authn.Middleware(protected))
 
         mux.Handle("/", s.spaHandler())
 

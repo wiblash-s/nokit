@@ -142,9 +142,9 @@ func configureLogAddress(logger *slog.Logger, mgr *rcon.Manager, servers []store
 func main() {
         logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-        creds, err := auth.LoadCredentials()
+        authCfg, err := auth.LoadConfig()
         if err != nil {
-                logger.Error("credentials", "error", err)
+                logger.Error("auth config", "error", err)
                 os.Exit(1)
         }
 
@@ -158,6 +158,15 @@ func main() {
                 os.Exit(1)
         }
         defer st.Close()
+
+        // Build the authenticator. In OIDC mode this performs provider discovery
+        // against the issuer, so it needs the issuer reachable at startup.
+        authn, err := auth.New(context.Background(), authCfg, st, logger)
+        if err != nil {
+                logger.Error("auth init", "error", err)
+                os.Exit(1)
+        }
+        logger.Info("authentication configured", "mode", string(authCfg.Mode))
 
         mgr := rcon.New(logger)
         servers, err := st.ListServers()
@@ -218,7 +227,7 @@ func main() {
         logger.Info("workshop map discovery ready", "base_dir", workshop.BaseDir(),
                 "hint", "mount a server's steamapps/workshop/content/730 at <base>/<serverId> to enable filesystem mode (exact IDs, multi-version, uninstall)")
 
-        srv := server.New(logger, dist, st, mgr, hub, steamClient, creds)
+        srv := server.New(logger, dist, st, mgr, hub, steamClient, authn)
         httpSrv := &http.Server{
                 Addr:    addr,
                 Handler: srv.Handler(),

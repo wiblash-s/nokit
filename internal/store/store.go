@@ -82,7 +82,10 @@ func (s *Store) migrate() error {
                         UNIQUE(server_id, name)
                 );
         `)
-        return err
+        if err != nil {
+                return err
+        }
+        return s.migrateAuth()
 }
 
 // WorkshopMapRecord is a cached workshop ID<->name pairing for a server.

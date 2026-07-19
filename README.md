@@ -65,6 +65,169 @@ Servers are configured in `config.yml`. Secrets come from environment variables.
 
 See [`config.example.yml`](./config.example.yaml) and [`.env.example`](./.env.example).
 
+## Authentication
+
+The panel supports two authentication modes, selected with the `AUTH_MODE`
+environment variable:
+
+| `AUTH_MODE` | Description |
+|-------------|-------------|
+| `local` (default) | Single username/password account via `PANEL_USERNAME` / `PANEL_PASSWORD`. This account is fully privileged. Best for a quick personal setup. |
+| `oidc` | Delegated single sign-on against an OIDC provider such as **Authelia**. Authorization (what each user may do) is derived from the provider's `groups` claim. Best for teams and for putting the panel behind your existing identity stack (Authelia + lldap). |
+
+### Roles & permissions (OIDC mode)
+
+Authorization is group-based. Create these four groups in your identity source
+(e.g. **lldap**) and assign users to them. Roles are **additive** — each higher
+role inherits every permission of the ones below it.
+
+| Group | Inherits | Grants |
+|-------|----------|--------|
+| `cs2-rcon-viewer` | — | View dashboard, players & bans, live logs, map list, thumbnails |
+| `cs2-rcon-operator` | viewer | RCON console, kick players |
+| `cs2-rcon-admin` | operator | Ban/unban, manage workshop maps, add/edit servers, edit & exec configs |
+| `cs2-rcon-superadmin` | admin | Delete servers, delete configs, view the audit log |
+
+A user who authenticates successfully but is in **none** of these groups is
+denied access to the panel entirely (they see a "no panel role assigned"
+message). The whole `groups` prefix is `cs2-rcon-` so the groups are unambiguous
+if lldap/Authelia is shared with other apps.
+
+Every state-changing action (RCON commands, bans, config saves/exec, deletes,
+workshop changes) is recorded in an **audit log** with the acting user's
+identity. Superadmins can read it at `GET /api/audit`.
+
+### What you must configure — three places
+
+Creating the groups in lldap is necessary but **not sufficient**. All three of
+the following must be set up:
+
+1. **lldap** — create the four `cs2-rcon-*` groups and add users to them.
+2. **Authelia** — register the panel as an OIDC client and expose the `groups`
+   claim (see config block below). Authelia reads group membership from lldap
+   via LDAP automatically.
+3. **The panel** — set the `OIDC_*` environment variables (see below).
+
+#### 1. lldap
+
+Create the groups (via the lldap web UI, or `lldap-cli`):
+
+```
+cs2-rcon-viewer
+cs2-rcon-operator
+cs2-rcon-admin
+cs2-rcon-superadmin
+```
+
+Add each user to the appropriate group. (Groups are additive, so a superadmin
+only needs to be in `cs2-rcon-superadmin`.)
+
+#### 2. Authelia — OIDC client registration
+
+Generate a client secret and its hash:
+
+```bash
+docker run authelia/authelia:latest authelia crypto hash generate pbkdf2 --password 'your-long-random-secret'
+```
+
+Add the client to Authelia's `configuration.yml` under
+`identity_providers.oidc.clients`:
+
+```yaml
+identity_providers:
+  oidc:
+    # ... hmac_secret / jwks already configured ...
+    clients:
+      - client_id: cs2rcon
+        client_name: CS2 RCON Panel
+        # The *hash* of your secret goes here; the plaintext goes in the panel's
+        # OIDC_CLIENT_SECRET env var.
+        client_secret: '$pbkdf2-sha512$...'   # output of the hash command above
+        public: false
+        authorization_policy: two_factor        # or one_factor
+        require_pkce: true
+        pkce_challenge_method: S256
+        redirect_uris:
+          - https://rcon.example.com/api/auth/callback
+        scopes:
+          - openid
+          - profile
+          - email
+          - groups          # <-- required so the panel can read group membership
+        userinfo_signed_response_alg: none
+        token_endpoint_auth_method: client_secret_post
+```
+
+Authelia includes the `groups` claim from lldap automatically once the `groups`
+scope is granted. The panel reads it from the ID token and falls back to the
+userinfo endpoint if it is not present there.
+
+Optionally restrict who even reaches the panel with an access control rule:
+
+```yaml
+access_control:
+  rules:
+    - domain: rcon.example.com
+      policy: two_factor
+```
+
+#### 3. Panel environment variables
+
+```bash
+AUTH_MODE=oidc
+OIDC_ISSUER_URL=https://auth.example.com          # your Authelia base URL
+OIDC_CLIENT_ID=cs2rcon
+OIDC_CLIENT_SECRET=your-long-random-secret        # the PLAINTEXT secret
+OIDC_REDIRECT_URL=https://rcon.example.com/api/auth/callback
+# Optional:
+# OIDC_SCOPES="openid profile email groups"        # override requested scopes
+# OIDC_POST_LOGOUT_REDIRECT_URL=https://rcon.example.com/login
+# AUTH_COOKIE_INSECURE=1                            # only for local HTTP testing (disables Secure cookie)
+```
+
+The `OIDC_ISSUER_URL` must be reachable by the panel at startup — it performs
+OIDC discovery against `<issuer>/.well-known/openid-configuration`. The
+`OIDC_REDIRECT_URL` must exactly match one of the client's `redirect_uris` in
+Authelia.
+
+The flow uses the OAuth2 authorization-code grant with **PKCE (S256)** and a
+`state` parameter for CSRF protection. On RP-initiated logout the panel redirects
+to Authelia's `end_session_endpoint` when the provider advertises one.
+
+### docker-compose example (panel + Authelia + lldap behind a proxy)
+
+```yaml
+services:
+  defuse:
+    build: .
+    environment:
+      AUTH_MODE: oidc
+      OIDC_ISSUER_URL: https://auth.example.com
+      OIDC_CLIENT_ID: cs2rcon
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
+      OIDC_REDIRECT_URL: https://rcon.example.com/api/auth/callback
+      RCON_PASSWORD_1: ${RCON_PASSWORD_1}
+    # exposed via your reverse proxy (Nginx Proxy Manager, Traefik, Caddy...)
+
+  authelia:
+    image: authelia/authelia:latest
+    volumes:
+      - ./authelia:/config
+    # configured with the oidc client block shown above and an lldap backend
+
+  lldap:
+    image: lldap/lldap:stable
+    volumes:
+      - ./lldap:/data
+    environment:
+      LLDAP_JWT_SECRET: ${LLDAP_JWT_SECRET}
+      LLDAP_LDAP_USER_PASS: ${LLDAP_ADMIN_PASS}
+```
+
+> Because the panel does the full OIDC dance itself, you do **not** also need a
+> reverse-proxy forward-auth rule in front of it — SSO is enforced by the app.
+> If you still want a proxy-level gate you can add one, but it is redundant.
+
 ## Map thumbnails (Steam Web API)
 
 The **Maps** page can show real Steam Workshop preview images for installed
